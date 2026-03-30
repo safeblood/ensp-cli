@@ -97,6 +97,8 @@
 - `ensp-cli show-routes <device>` - View routing table
 - `ensp-cli export-config <device> -o <file>` - Export configuration
 - `ensp-cli export-all <directory>` - Export all device configs
+- `ensp-cli import-config <device> <file>` - Import configuration
+- `ensp-cli import-all <directory>` - Import to multiple devices
 - `ensp-cli diff-config <dev1> <dev2>` - Compare configurations
 - `ensp-cli audit-configs` - Find configuration inconsistencies
 

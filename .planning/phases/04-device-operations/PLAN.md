@@ -18,10 +18,11 @@
 **Success Criteria:**
 1. User can view device configuration with `ensp-cli show-config <device>`
 2. User can export config with `ensp-cli export-config <device> -o <file>`
-3. User can compare configs with `ensp-cli diff-config <dev1> <dev2>`
-4. User can audit all configs with `ensp-cli audit-configs`
-5. JSON output supported for automation/integration
-6. All commands include tests
+3. User can import config with `ensp-cli import-config <device> <file>`
+4. User can compare configs with `ensp-cli diff-config <dev1> <dev2>`
+5. User can audit all configs with `ensp-cli audit-configs`
+6. JSON output supported for automation/integration
+7. All commands include tests
 
 ---
 
@@ -79,6 +80,27 @@
 - [ ] Audit finds configuration drift
 - [ ] Smart ignore filters volatile fields
 
+### 04-04: Import Configuration
+**Goal:** Implement configuration import from files to devices
+
+**Commands:**
+- `ensp-cli import-config <device> <file>` - Import to single device
+- `ensp-cli import-all <directory>` - Import to multiple devices
+
+**Features:**
+- Dry-run mode for preview
+- Dangerous command detection
+- Section-specific import
+- Template variable substitution
+- Rollback on failure
+
+**must_haves:**
+- [ ] Configuration import from file works
+- [ ] Dry-run mode previews changes
+- [ ] Dangerous command warnings
+- [ ] Batch import to multiple devices
+- [ ] Template variables supported
+
 ---
 
 ## Execution Waves
@@ -86,7 +108,7 @@
 | Wave | Plans | Description |
 |------|-------|-------------|
 | 1 | 04-01 | Config viewing (foundational) |
-| 2 | 04-02 | Config export (depends on 04-01) |
+| 2 | 04-02, 04-04 | Config export and import (parallel, both depend on 04-01) |
 | 3 | 04-03 | Config diff (depends on 04-01, 04-02) |
 
 ## Plan Files
@@ -94,6 +116,7 @@
 - **04-01-show-config-PLAN.md** - Configuration viewing commands
 - **04-02-export-config-PLAN.md** - Configuration export
 - **04-03-diff-config-PLAN.md** - Configuration comparison
+- **04-04-import-config-PLAN.md** - Configuration import
 
 ## Status
 
