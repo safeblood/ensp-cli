@@ -198,6 +198,13 @@ def exec_command(
         ensp-cli exec Router1 "display version"
         ensp-cli exec Router1 "display ip interface brief" --output json
         ensp-cli exec Router1 "system-view" --topology mylab.topo
+    
+    Exit codes:
+        0: Success
+        1: Connection error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
     """
     exit_code = asyncio.run(exec_async(device_name, command, topology, output, timeout))
     raise typer.Exit(exit_code)
