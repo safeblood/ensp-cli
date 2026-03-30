@@ -15,6 +15,7 @@ from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
 
 # Import commands
 from ensp_cli.commands.console import console_command
+from ensp_cli.commands.exec import exec_command
 
 
 class OutputFormat(str, Enum):
@@ -84,6 +85,7 @@ def main(
 
 # Register commands
 app.command(name="console")(console_command)
+app.command(name="exec")(exec_command)
 
 
 def _output_json(topology: Topology) -> None:
@@ -182,6 +184,12 @@ def list(
         ensp-cli list topology.topo
         ensp-cli list topology.topo --output json
         ensp-cli list topology.topo --show-connections
+    
+    Exit codes:
+        0: Success
+        2: File not found
+        3: Parse error
+        4: Permission denied
     """
     try:
         parser = TopologyParser()
