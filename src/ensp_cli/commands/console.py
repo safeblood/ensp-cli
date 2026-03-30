@@ -111,7 +111,19 @@ async def console_async(
         topology = parse_topology(topo_file)
         
         # Find device
-        device = get_device_or_exit(topology, device_name)
+        try:
+            device = get_device_or_exit(topology, device_name)
+        except typer.Exit as e:
+            # Device not found - output JSON error if requested
+            if output_format == "json":
+                available = [d.name for d in topology.devices]
+                print(json.dumps({
+                    "status": "error",
+                    "error": f"Device '{device_name}' not found in topology",
+                    "device": device_name,
+                    "available_devices": available,
+                }))
+            return e.exit_code
         
         # Connect and start interactive session
         async with device_session(device) as client:
