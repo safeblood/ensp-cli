@@ -86,16 +86,18 @@ def main(
 # Register commands
 app.command(name="console")(console_command)
 app.command(name="exec")(exec_command)
+app.command(name="exec")(exec_command)
 
 
 def _output_json(topology: Topology) -> None:
     """Output topology as JSON."""
     data = {
+        "status": "success",
         "name": topology.name,
         "devices": [device.model_dump() for device in topology.devices],
         "connections": [conn.model_dump() for conn in topology.connections],
     }
-    console.print(json.dumps(data, indent=2))
+    format_output_json(data)
 
 
 def _output_table(topology: Topology, show_connections: bool = False) -> None:
@@ -162,8 +164,8 @@ def list(
         dir_okay=False,
         resolve_path=True,
     ),
-    output: OutputFormat = typer.Option(
-        OutputFormat.TABLE,
+    output: str = typer.Option(
+        "table",
         "--output",
         "-o",
         help="Output format (table or json)",
@@ -195,7 +197,7 @@ def list(
         parser = TopologyParser()
         topology = parser.parse_file(topo_file)
         
-        if output == OutputFormat.JSON:
+        if output == "json":
             _output_json(topology)
         else:
             _output_table(topology, show_connections=show_connections)
