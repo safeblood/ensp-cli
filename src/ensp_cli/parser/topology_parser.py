@@ -1,6 +1,7 @@
 """Secure XML parser for eNSP topology files."""
 
 from pathlib import Path
+from xml.etree.ElementTree import Element
 
 import defusedxml.ElementTree as ET
 from defusedxml.ElementTree import ParseError
@@ -74,7 +75,7 @@ class TopologyParser:
         
         return self._parse_root(root, "unnamed", None)
 
-    def _parse_root(self, root: ET.Element, topology_name: str, file_path: Path | None) -> Topology:
+    def _parse_root(self, root: Element, topology_name: str, file_path: Path | None) -> Topology:
         """Parse the root element and create a Topology model.
         
         Args:
@@ -111,7 +112,7 @@ class TopologyParser:
         
         return topology
 
-    def _parse_devices(self, devices_elem: ET.Element) -> list[Device]:
+    def _parse_devices(self, devices_elem: Element) -> list[Device]:
         """Parse device elements from XML.
         
         Args:
@@ -132,7 +133,7 @@ class TopologyParser:
         
         return devices
 
-    def _parse_device(self, dev_elem: ET.Element) -> Device | None:
+    def _parse_device(self, dev_elem: Element) -> Device | None:
         """Parse a single device element.
         
         Args:
@@ -200,7 +201,7 @@ class TopologyParser:
             # Use model as type if no specific mapping
             return model
 
-    def _parse_connections(self, lines_elem: ET.Element, device_id_map: dict[str, str]) -> list[Connection]:
+    def _parse_connections(self, lines_elem: Element, device_id_map: dict[str, str]) -> list[Connection]:
         """Parse connection elements from XML.
         
         Args:
@@ -219,7 +220,7 @@ class TopologyParser:
         
         return connections
 
-    def _parse_connection(self, line_elem: ET.Element, device_id_map: dict[str, str]) -> Connection | None:
+    def _parse_connection(self, line_elem: Element, device_id_map: dict[str, str]) -> Connection | None:
         """Parse a single connection element.
         
         Args:
