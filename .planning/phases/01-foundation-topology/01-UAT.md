@@ -1,7 +1,7 @@
 # Phase 1 - User Acceptance Testing
 
 **Started:** 2026-03-30
-**Status:** in_progress
+**Status:** complete
 
 ## Tests
 
@@ -11,7 +11,7 @@
 | 2 | `ensp-cli list <valid.topo>` displays device table | Rich table with Name, Type, Model, Console Port columns | ✓ pass | |
 | 3 | `ensp-cli list <file> --output json` produces valid JSON | Parseable JSON with devices and connections arrays | ✓ pass | |
 | 4 | `ensp-cli list <file> --show-connections` shows links | Table with From Device, From Port, To Device, To Port | ✓ pass | Fixed - now correctly parses srcDeviceID/destDeviceID
-| 5 | `ensp-cli list <nonexistent>` shows error + exit code | Clear error message, returns non-zero exit code | pending | |
+| 5 | `ensp-cli list <nonexistent>` shows error + exit code | Clear error message, returns non-zero exit code | ✓ pass | |
 
 ## Issues Found
 
