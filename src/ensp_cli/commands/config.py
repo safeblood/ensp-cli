@@ -9,12 +9,21 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.syntax import Syntax
 from rich.table import Table
 
 from ensp_cli.connection_manager import device_session
 from ensp_cli.models import Device, Topology
 from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
+from ensp_cli.services.config_exporter import ConfigExporter
+from ensp_cli.services.config_importer import (
+    ConfigImporter,
+    ConfigImportError,
+    DangerousCommandError,
+    ImportResult,
+)
 
 # Import helper functions from console
 from ensp_cli.commands.console import find_topology_file, get_device_or_none, parse_topology
@@ -719,4 +728,269 @@ def show_routes_command(
         5: Command timeout
     """
     exit_code = asyncio.run(show_routes_async(device, topo_file, protocol, output, timeout))
+    raise typer.Exit(exit_code)
+
+
+# =============================================================================
+# Export Configuration Commands
+# =============================================================================
+
+async def export_config_async(
+    device_name: str,
+    output_path: Path,
+    topology_path: Optional[Path],
+    fmt: str,
+    timeout: float = 10.0,
+) -> int:
+    """Async implementation of export-config command.
+    
+    Args:
+        device_name: Name of the device to export.
+        output_path: Path where the configuration will be saved.
+        topology_path: Optional path to topology file.
+        fmt: Export format (txt, json, md).
+        timeout: Timeout in seconds for command execution.
+        
+    Returns:
+        Exit code:
+            0 - Success
+            1 - General error or device not found
+            2 - File not found (topology file)
+            3 - Parse error (invalid topology file)
+            5 - Command timeout
+    """
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Find device
+        device = get_device_or_none(topology, device_name, "text")
+        if device is None:
+            return 1
+        
+        # Export configuration
+        exporter = ConfigExporter(topology, topo_file)
+        result = await exporter.export_device_config(device, output_path, fmt, timeout)
+        
+        # Print success message
+        console.print(f"[green]✓ Exported configuration for {device_name}[/green]")
+        console.print(f"  Output: [cyan]{output_path.resolve()}[/cyan]")
+        console.print(f"  Format: [dim]{fmt}[/dim]")
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except TopologyParserError as e:
+        console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except ConnectionError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except asyncio.TimeoutError:
+        error_msg = f"Command timed out after {timeout} seconds"
+        console.print(f"[red]Error: {error_msg}[/red]")
+        return 5
+
+
+@app.command(name="export-config")
+def export_config_command(
+    device: str = typer.Argument(..., help="Device name"),
+    output: Path = typer.Option(
+        ...,
+        "--output",
+        "-o",
+        help="Output file path",
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    fmt: str = typer.Option(
+        "txt",
+        "--format",
+        "-f",
+        help="Export format: txt, json, md",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds",
+    ),
+) -> None:
+    """Export a single device configuration to file.
+    
+    Connects to the specified device via Telnet, retrieves the
+    current configuration, and saves it to the specified output file.
+    
+    Supported formats:
+        - txt: Plain text with metadata header
+        - json: Structured JSON with metadata and configuration
+        - md: Markdown with syntax highlighting
+    
+    Examples:
+        ensp-cli export-config Router1 -o r1.cfg
+        ensp-cli export-config Router1 -o r1.json -f json
+        ensp-cli export-config Router1 -o configs/r1.md -f md -t mylab.topo
+    
+    Exit codes:
+        0: Success
+        1: General error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
+    """
+    from ensp_cli.services.config_exporter import ConfigExporter
+    
+    exit_code = asyncio.run(export_config_async(
+        device, output, topo_file, fmt, timeout
+    ))
+    raise typer.Exit(exit_code)
+
+
+async def export_all_async(
+    output_dir: Path,
+    topology_path: Optional[Path],
+    fmt: str,
+    timeout: float,
+    parallel: bool,
+) -> int:
+    """Async implementation of export-all command.
+    
+    Args:
+        output_dir: Directory where configurations will be saved.
+        topology_path: Optional path to topology file.
+        fmt: Export format (txt, json, md).
+        timeout: Timeout in seconds for each device.
+        parallel: If True, fetch configs in parallel.
+        
+    Returns:
+        Exit code:
+            0 - All exports succeeded
+            1 - General error
+            2 - File not found (topology file)
+            3 - Parse error (invalid topology file)
+    """
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Export all configurations
+        from ensp_cli.services.config_exporter import export_all_configs
+        
+        results = await export_all_configs(
+            topology, output_dir, topo_file, fmt, timeout, parallel
+        )
+        
+        # Generate summary
+        success_count = sum(1 for r in results if r.get("success", False))
+        total_count = len(results)
+        
+        console.print()
+        console.print(f"[bold]Export Summary:[/bold]")
+        console.print(f"  Total devices: {total_count}")
+        console.print(f"  Successful: [green]{success_count}[/green]")
+        console.print(f"  Failed: [red]{total_count - success_count}[/red]")
+        
+        # Show failed devices
+        failed = [r for r in results if not r.get("success", False)]
+        if failed:
+            console.print(f"\n[yellow]Failed exports:[/yellow]")
+            for r in failed:
+                console.print(f"  - {r['device']}: {r.get('error', 'Unknown error')}")
+        
+        if success_count == total_count:
+            console.print(f"\n[green]✓ All configurations exported to {output_dir.resolve()}[/green]")
+            return 0
+        elif success_count > 0:
+            console.print(f"\n[yellow]⚠ Partial export completed[/yellow]")
+            return 1
+        else:
+            console.print(f"\n[red]✗ All exports failed[/red]")
+            return 1
+        
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except TopologyParserError as e:
+        console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
+
+
+@app.command(name="export-all")
+def export_all_command(
+    output_dir: Path = typer.Argument(
+        ...,
+        help="Output directory",
+        file_okay=False,
+        resolve_path=True,
+    ),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    fmt: str = typer.Option(
+        "txt",
+        "--format",
+        "-f",
+        help="Export format: txt, json, md",
+    ),
+    parallel: bool = typer.Option(
+        True,
+        "--parallel/--sequential",
+        help="Fetch configs in parallel",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds per device",
+    ),
+) -> None:
+    """Export all device configurations.
+    
+    Connects to all devices in the topology and exports their
+    configurations to files in the specified directory.
+    
+    Files are named: {device_name}.{format}
+    
+    Examples:
+        ensp-cli export-all ./backup/
+        ensp-cli export-all ./backup/ -f json
+        ensp-cli export-all ./backup/ -t mylab.topo --sequential
+        ensp-cli export-all ./backup/ -f md --timeout 15
+    
+    Exit codes:
+        0: All exports succeeded
+        1: Partial success or general error
+        2: Topology file not found
+        3: Parse error
+    """
+    from ensp_cli.services.config_exporter import ConfigExporter
+    
+    exit_code = asyncio.run(export_all_async(
+        output_dir, topo_file, fmt, timeout, parallel
+    ))
     raise typer.Exit(exit_code)
