@@ -58,7 +58,7 @@ def get_device_or_exit(topology: Topology, device_name: str, output_format: str 
     Args:
         topology: The topology to search in.
         device_name: The device name to search for.
-        output_format: Output format (text or json).
+        output_format: Output format (text or json) as string.
         
     Returns:
         The Device if found.
@@ -69,19 +69,17 @@ def get_device_or_exit(topology: Topology, device_name: str, output_format: str 
     device = topology.get_device(device_name)
     if device is None:
         available = [d.name for d in topology.devices]
-        if output_format == "json":
-            print(json.dumps({
+        fmt = OutputFormat.JSON if output_format == "json" else OutputFormat.TEXT
+        if fmt == OutputFormat.JSON:
+            output_json({
                 "status": "error",
                 "error": f"Device '{device_name}' not found in topology",
                 "device": device_name,
                 "available_devices": available,
-            }))
+            })
         else:
-            print(
-                f"Error: Device '{device_name}' not found in topology.",
-                file=sys.stderr,
-            )
-            print(f"Available devices: {', '.join(available)}", file=sys.stderr)
+            console.print(f"[red]Error: Device '{device_name}' not found in topology.[/red]")
+            console.print(f"[yellow]Available devices: {', '.join(available)}[/yellow]")
         raise typer.Exit(1)
     return device
 

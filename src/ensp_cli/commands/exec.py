@@ -22,6 +22,27 @@ from ensp_cli.commands.console import find_topology_file, get_device_or_exit, pa
 console = Console()
 
 
+def output_with_syntax_highlighting(data: str, lexer: str = "cisco") -> None:
+    """Output text with syntax highlighting using Rich Syntax.
+    
+    Args:
+        data: Text to output.
+        lexer: Pygments lexer to use for highlighting.
+    """
+    try:
+        syntax = Syntax(
+            data,
+            lexer,
+            theme="monokai",
+            line_numbers=False,
+            word_wrap=True,
+        )
+        console.print(syntax)
+    except Exception:
+        # Fallback to plain text if Syntax fails
+        print(data)
+
+
 async def execute_command(
     device: Device,
     command: str,
@@ -66,27 +87,6 @@ async def execute_command(
         clean_output = "\n".join(lines)
         
         return clean_output
-
-
-def output_with_syntax_highlighting(data: str, lexer: str = "cisco") -> None:
-    """Output text with syntax highlighting using Rich Syntax.
-    
-    Args:
-        data: Text to output.
-        lexer: Pygments lexer to use for highlighting.
-    """
-    try:
-        syntax = Syntax(
-            data,
-            lexer,
-            theme="monokai",
-            line_numbers=False,
-            word_wrap=True,
-        )
-        console.print(syntax)
-    except Exception:
-        # Fallback to plain text if Syntax fails
-        print(data)
 
 
 async def exec_async(
