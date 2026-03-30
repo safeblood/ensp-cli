@@ -87,18 +87,25 @@ class TopologyParser:
         """
         topology = Topology(name=topology_name, file_path=file_path)
         
-        # Parse devices
+        # Parse devices first and build ID -> name mapping
         devices_elem = root.find("devices")
+        device_id_map = {}
         if devices_elem is not None:
             devices = self._parse_devices(devices_elem)
             for device in devices:
                 if device:  # Skip None devices
                     topology.add_device(device)
+                    # Build mapping from XML id to device name for connections
+                    dev_elem = devices_elem.find(f".//dev[@name='{device.name}']")
+                    if dev_elem is not None:
+                        device_id = dev_elem.get("id", "")
+                        if device_id:
+                            device_id_map[device_id] = device.name
         
         # Parse connections (from lines element)
         lines_elem = root.find("lines")
         if lines_elem is not None:
-            connections = self._parse_connections(lines_elem)
+            connections = self._parse_connections(lines_elem, device_id_map)
             for connection in connections:
                 topology.add_connection(connection)
         
@@ -193,14 +200,12 @@ class TopologyParser:
             # Use model as type if no specific mapping
             return model
 
-    def _parse_connections(self, lines_elem: ET.Element) -> list[Connection]:
+    def _parse_connections(self, lines_elem: ET.Element, device_id_map: dict[str, str]) -> list[Connection]:
         """Parse connection elements from XML.
-        
-        Note: The sample .topo file has an empty <lines /> element.
-        This method handles the <line> elements when they exist.
         
         Args:
             lines_elem: <lines> XML element
+            device_id_map: Mapping from device XML id to device name
             
         Returns:
             List of Connection models
@@ -208,30 +213,46 @@ class TopologyParser:
         connections = []
         
         for line_elem in lines_elem.findall("line"):
-            connection = self._parse_connection(line_elem)
+            connection = self._parse_connection(line_elem, device_id_map)
             if connection:
                 connections.append(connection)
         
         return connections
 
-    def _parse_connection(self, line_elem: ET.Element) -> Connection | None:
+    def _parse_connection(self, line_elem: ET.Element, device_id_map: dict[str, str]) -> Connection | None:
         """Parse a single connection element.
         
         Args:
             line_elem: <line> XML element
+            device_id_map: Mapping from device XML id to device name
             
         Returns:
             Connection model or None if parsing fails
         """
-        # Extract attributes
-        from_device = line_elem.get("from_device", "")
-        from_port = line_elem.get("from_port", "")
-        to_device = line_elem.get("to_device", "")
-        to_port = line_elem.get("to_port", "")
+        # eNSP uses srcDeviceID and destDeviceID attributes
+        src_id = line_elem.get("srcDeviceID", "")
+        dest_id = line_elem.get("destDeviceID", "")
         
-        # Skip empty connections
+        # Map IDs to device names
+        from_device = device_id_map.get(src_id, "")
+        to_device = device_id_map.get(dest_id, "")
+        
+        # Skip if we can't map to device names
         if not from_device or not to_device:
             return None
+        
+        # Extract interface info from interfacePair child element
+        from_port = ""
+        to_port = ""
+        interface_pair = line_elem.find("interfacePair")
+        if interface_pair is not None:
+            # srcIndex and tarIndex refer to interface indices
+            src_idx = interface_pair.get("srcIndex", "")
+            tar_idx = interface_pair.get("tarIndex", "")
+            # lineName indicates the type (Copper, Serial, etc.)
+            line_type = interface_pair.get("lineName", "")
+            from_port = f"{line_type}:{src_idx}" if line_type else src_idx
+            to_port = f"{line_type}:{tar_idx}" if line_type else tar_idx
         
         return Connection(
             from_device=from_device,
