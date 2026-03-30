@@ -7,8 +7,8 @@
 - [x] **TOPO-02**: User can view topology structure including device-to-device connections
 
 ### Connection (CONN)
-- [ ] **CONN-01**: User can connect to device console via Telnet (127.0.0.1:com_port)
-- [ ] **CONN-02**: User can start an interactive console session with a single device
+- [x] **CONN-01**: User can connect to device console via Telnet (127.0.0.1:com_port)
+- [x] **CONN-02**: User can start an interactive console session with a single device
 
 ### Execution (EXEC)
 - [ ] **EXEC-01**: User can execute a single command on a device and return the output
