@@ -41,6 +41,7 @@ The `exec` command has been implemented, allowing users to execute single comman
 | 4 | Implemented JSON output format | f006340 | ✓ Complete |
 | 5 | Added exit code handling (0, 1, 2, 3, 5) | f006340 | ✓ Complete |
 | 6 | Wrote comprehensive tests for exec command | 093537e | ✓ Complete |
+| Fix | Fixed exec.py to use string output_format instead of enum | 19fe99c | ✓ Complete |
 
 ## Deviations from Plan
 
