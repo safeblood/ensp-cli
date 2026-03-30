@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -37,14 +38,16 @@ async def execute_command(
         asyncio.TimeoutError: If command times out.
     """
     async with device_session(device, timeout) as client:
-        # Wait for device to be ready
-        await asyncio.sleep(0.5)
-        
-        # Clear any initial output
+        # Wait for device to be ready and clear initial output
+        await asyncio.sleep(0.3)
         await client.read_available()
         
         # Send command
         await client.write_line(command)
+        
+        # Wait for command to be echoed back (device echoes what we type)
+        # Then read the actual output
+        await asyncio.sleep(0.5)
         
         # Collect output until we see the prompt
         start_time = asyncio.get_event_loop().time()
@@ -55,9 +58,7 @@ async def execute_command(
             if chunk:
                 all_output += chunk
                 # Check if we have the prompt (look at last few lines only)
-                # Split by lines and check the last non-empty line
                 lines = all_output.replace('\r\n', '\n').split('\n')
-                # Get last few non-empty lines
                 recent_lines = [line for line in lines[-3:] if line.strip()]
                 if recent_lines:
                     last_line = recent_lines[-1].strip()
@@ -70,14 +71,24 @@ async def execute_command(
             
             await asyncio.sleep(0.1)
         
-        # Process output
-        # Replace \r\n with \n for consistent handling
+        # Process output - handle both user view and system view prompts
         output = all_output.replace('\r\n', '\n')
         lines = output.splitlines()
         
-        # Strip command echo from beginning (first line if it contains command)
-        if lines and command.strip() in lines[0].strip():
-            lines = lines[1:]
+        # Find and remove the command echo line
+        # It may contain the prompt prefix like "[R2]display ..." or just "display ..."
+        command_stripped = command.strip()
+        first_content_line = 0
+        for i, line in enumerate(lines):
+            # Remove prompt prefix if present (both <R2> and [R2] formats)
+            clean_line = line
+            for pattern in [r'^[<\[][^\]>]+[>\]]\s*']:
+                clean_line = re.sub(pattern, '', line)
+            if command_stripped in clean_line or command_stripped in line:
+                first_content_line = i + 1
+                break
+        
+        lines = lines[first_content_line:]
         
         # Strip trailing prompt (last line matching VRP pattern)
         if lines:
