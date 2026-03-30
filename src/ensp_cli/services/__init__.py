@@ -1,9 +1,25 @@
 """Services for eNSP CLI."""
 
+from ensp_cli.services.config_differ import (
+    ConfigDiffer,
+    ConfigDiff,
+    DiffLine,
+    compare_configs,
+    diff_from_files,
+)
 from ensp_cli.services.config_exporter import (
     ConfigExporter,
     export_all_configs,
     export_device_config,
 )
 
-__all__ = ["ConfigExporter", "export_device_config", "export_all_configs"]
+__all__ = [
+    "ConfigExporter",
+    "export_device_config",
+    "export_all_configs",
+    "ConfigDiffer",
+    "ConfigDiff",
+    "DiffLine",
+    "compare_configs",
+    "diff_from_files",
+]
