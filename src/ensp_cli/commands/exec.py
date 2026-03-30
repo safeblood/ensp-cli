@@ -14,7 +14,7 @@ from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
 from ensp_cli.telnet_client import VRP_PROMPT_ANY
 
 # Import helper functions from console
-from ensp_cli.commands.console import find_topology_file, get_device_or_exit, parse_topology
+from ensp_cli.commands.console import find_topology_file, get_device_or_none, parse_topology
 
 
 async def execute_command(
@@ -37,18 +37,40 @@ async def execute_command(
         asyncio.TimeoutError: If command times out.
     """
     async with device_session(device, timeout) as client:
-        # Read initial banner/prompt
-        await client.read_until(VRP_PROMPT_ANY, timeout=timeout)
+        # Wait for device to be ready
+        await asyncio.sleep(0.5)
+        
+        # Clear any initial output
+        await client.read_available()
         
         # Send command
         await client.write_line(command)
         
-        # Read response until next prompt
-        output = await client.read_until(VRP_PROMPT_ANY, timeout=timeout)
+        # Collect output until we see the prompt
+        start_time = asyncio.get_event_loop().time()
+        all_output = ""
         
-        # Strip command echo from beginning (first line)
+        while True:
+            chunk = await client.read_available()
+            if chunk:
+                all_output += chunk
+                # Check if we have the prompt
+                if VRP_PROMPT_ANY.search(all_output):
+                    break
+            
+            # Check timeout
+            if asyncio.get_event_loop().time() - start_time > timeout:
+                raise asyncio.TimeoutError(f"Command timed out after {timeout} seconds")
+            
+            await asyncio.sleep(0.1)
+        
+        # Process output
+        # Replace \r\n with \n for consistent handling
+        output = all_output.replace('\r\n', '\n')
         lines = output.splitlines()
-        if lines and lines[0].strip() == command.strip():
+        
+        # Strip command echo from beginning (first line if it contains command)
+        if lines and command.strip() in lines[0].strip():
             lines = lines[1:]
         
         # Strip trailing prompt (last line matching VRP pattern)
@@ -93,7 +115,9 @@ async def exec_async(
         topology = parse_topology(topo_file)
         
         # Find device
-        device = get_device_or_exit(topology, device_name, output_format)
+        device = get_device_or_none(topology, device_name, output_format)
+        if device is None:
+            return 1
         
         # Execute command
         output = await execute_command(device, command, timeout)
@@ -195,6 +219,13 @@ def exec_command(
         ensp-cli exec Router1 "display version"
         ensp-cli exec Router1 "display ip interface brief" --output json
         ensp-cli exec Router1 "system-view" --topology mylab.topo
+    
+    Exit codes:
+        0: Success
+        1: General error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
     """
     exit_code = asyncio.run(exec_async(device_name, command, topology, output, timeout))
     raise typer.Exit(exit_code)

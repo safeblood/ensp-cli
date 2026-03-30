@@ -102,7 +102,7 @@ class TestTelnetClient:
             await client.connect()
             
             await client.write("display version")
-            mock_writer.write.assert_called_once_with(b"display version")
+            mock_writer.write.assert_called_once_with("display version")
             mock_writer.drain.assert_awaited_once()
     
     @pytest.mark.asyncio
@@ -119,7 +119,7 @@ class TestTelnetClient:
             await client.connect()
             
             await client.write_line("display version")
-            mock_writer.write.assert_called_once_with(b"display version\n")
+            mock_writer.write.assert_called_once_with("display version\n")
     
     @pytest.mark.asyncio
     async def test_read_until_not_connected(self):

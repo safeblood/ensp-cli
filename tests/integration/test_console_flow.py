@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ensp_cli.commands.console import console_async, find_topology_file
+from ensp_cli.output import OutputFormat
 from ensp_cli.models import Device, Topology
 
 
@@ -56,7 +57,7 @@ class TestConsoleFlow:
             mock_session.start = AsyncMock()
             mock_session_class.return_value = mock_session
             
-            exit_code = await console_async("Router1", topology_file, "text")
+            exit_code = await console_async("Router1", topology_file, OutputFormat.TEXT)
         
         assert exit_code == 0
         captured = capsys.readouterr()
@@ -141,7 +142,7 @@ class TestAutoDiscoveryFlow:
         
         assert exit_code == 1
         captured = capsys.readouterr()
-        assert "Multiple .topo files found" in captured.err
+        assert "Multiple .topo files found" in captured.out
 
 
 class TestJsonOutputFlow:
@@ -166,7 +167,7 @@ class TestJsonOutputFlow:
             mock_session.start = AsyncMock()
             mock_session_class.return_value = mock_session
             
-            exit_code = await console_async("Router1", topology_file, "json")
+            exit_code = await console_async("Router1", topology_file, OutputFormat.JSON)
         
         assert exit_code == 0
         captured = capsys.readouterr()
@@ -312,9 +313,9 @@ class TestErrorHandling:
         
         assert exit_code == 1
         captured = capsys.readouterr()
-        assert "Failed to connect" in captured.err
-        assert "Router1" in captured.err
-        assert "2000" in captured.err
+        assert "Failed to connect" in captured.out
+        assert "Router1" in captured.out
+        assert "2000" in captured.out
 
     @pytest.mark.asyncio
     async def test_device_not_found_shows_available_devices(
@@ -327,6 +328,6 @@ class TestErrorHandling:
         
         assert exit_code == 1
         captured = capsys.readouterr()
-        assert "Available devices:" in captured.err
-        assert "Router1" in captured.err
-        assert "Switch1" in captured.err
+        assert "Available devices:" in captured.out
+        assert "Router1" in captured.out
+        assert "Switch1" in captured.out

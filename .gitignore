@@ -1,1 +1,43 @@
-# GSD autopilot (transient files)`n.planning/autopilot.sh`n.planning/autopilot.lock`n.planning/logs/`n.planning/checkpoints/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# GSD
+.planning/autopilot.sh
+.planning/autopilot.lock
+.planning/logs/
+.planning/checkpoints/
+
+# Project specific
+ensp-cli

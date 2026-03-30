@@ -170,11 +170,19 @@ class TopologyParser:
         # This is a workaround since the model requires valid port range (1-65535)
         console_port = com_port if com_port >= 1 else 1
         
+        # Parse coordinates for visual layout
+        x_str = dev_elem.get("cx")
+        y_str = dev_elem.get("cy")
+        x = float(x_str) if x_str else None
+        y = float(y_str) if y_str else None
+        
         return Device(
             name=name,
             device_type=device_type,
             model=model_str,
-            console_port=console_port
+            console_port=console_port,
+            x=x,
+            y=y
         )
 
     def _determine_device_type(self, model: str) -> str:

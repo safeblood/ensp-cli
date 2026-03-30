@@ -3,7 +3,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import typer
 from rich.console import Console
@@ -52,8 +52,8 @@ def find_topology_file(path: Optional[Path] = None) -> Path:
     return topo_files[0]
 
 
-def get_device_or_exit(topology: Topology, device_name: str, output_format: str = "text") -> Device:
-    """Find device or print error and exit.
+def get_device_or_none(topology: Topology, device_name: str, output_format: str = "text") -> Device | None:
+    """Find device or print error and return None.
     
     Args:
         topology: The topology to search in.
@@ -61,10 +61,7 @@ def get_device_or_exit(topology: Topology, device_name: str, output_format: str 
         output_format: Output format (text or json) as string.
         
     Returns:
-        The Device if found.
-        
-    Raises:
-        typer.Exit: If device not found (exit code 1).
+        The Device if found, None otherwise.
     """
     device = topology.get_device(device_name)
     if device is None:
@@ -80,7 +77,7 @@ def get_device_or_exit(topology: Topology, device_name: str, output_format: str 
         else:
             console.print(f"[red]Error: Device '{device_name}' not found in topology.[/red]")
             console.print(f"[yellow]Available devices: {', '.join(available)}[/yellow]")
-        raise typer.Exit(1)
+        return None
     return device
 
 
@@ -104,7 +101,7 @@ def parse_topology(topo_file: Path) -> Topology:
 async def console_async(
     device_name: str,
     topology_path: Optional[Path],
-    output_format: OutputFormat,
+    output_format: Union[OutputFormat, str],
 ) -> int:
     """Async implementation of console command.
     
@@ -122,11 +119,14 @@ async def console_async(
         topology = parse_topology(topo_file)
         
         # Find device
-        device = get_device_or_exit(topology, device_name, output_format.value)
+        output_format_str = output_format.value if isinstance(output_format, OutputFormat) else output_format
+        device = get_device_or_none(topology, device_name, output_format_str)
+        if device is None:
+            return 1
         
         # Connect and start interactive session
         async with device_session(device) as client:
-            if output_format == OutputFormat.JSON:
+            if output_format_str == "json":
                 output_json({
                     "status": "connected",
                     "device": device.name,

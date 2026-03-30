@@ -143,7 +143,7 @@ class TestTopologyParser:
         assert topology.connection_count == 0
 
     def test_parse_with_connections(self):
-        """Test parsing topology with connections."""
+        """Test parsing topology with connections (real eNSP XML format)."""
         parser = TopologyParser()
         xml_content = '''<?xml version="1.0" encoding="UNICODE" ?>
         <topo version="1.3.00.200T">
@@ -152,7 +152,9 @@ class TestTopologyParser:
                 <dev id="d2" name="R2" model="Router" com_port="2001" />
             </devices>
             <lines>
-                <line from_device="R1" from_port="GE0/0/0" to_device="R2" to_port="GE0/0/0" />
+                <line srcDeviceID="d1" destDeviceID="d2">
+                    <interfacePair srcIndex="0" tarIndex="0" lineName="GE0/0/0"/>
+                </line>
             </lines>
         </topo>'''
         
@@ -163,9 +165,9 @@ class TestTopologyParser:
         
         conn = topology.connections[0]
         assert conn.from_device == "R1"
-        assert conn.from_port == "GE0/0/0"
+        assert conn.from_port == "GE0/0/0:0"
         assert conn.to_device == "R2"
-        assert conn.to_port == "GE0/0/0"
+        assert conn.to_port == "GE0/0/0:0"
 
     def test_device_type_mapping(self):
         """Test device type mapping from model string."""

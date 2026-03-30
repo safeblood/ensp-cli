@@ -1,6 +1,6 @@
 [project]
 name = "ensp-cli"
-version = "0.1.0"
+version = "1.0.0"
 description = "CLI tool for managing eNSP topology files and device connections"
 readme = "README.md"
 requires-python = ">=3.10"

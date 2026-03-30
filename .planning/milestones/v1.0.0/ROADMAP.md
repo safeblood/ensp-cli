@@ -98,9 +98,8 @@
 | 1 | Foundation & Topology Parsing | TOPO-01, TOPO-02 | 4 | ✅ |
 | 2 | Telnet Connection Layer | CONN-01, CONN-02 | 4 | ✅ |
 | 3 | Command Execution & CLI Polish | EXEC-01, CLI-01, CLI-02, CLI-03 | 5 | ✅ |
-| 4 | Device Operations | TOPO-03, TOPO-04, TOPO-05, TOPO-06 | 6 | 🔵 |
 
-**Total:** 4 phases, 12 requirements, 19 success criteria
+**Total:** 3 phases, 8 v1 requirements, 13 success criteria
 
 ---
 
@@ -114,40 +113,11 @@ This ordering follows the research-recommended build order: Models → XML Parse
 
 ---
 
-## Phase 4: Device Operations
+## Future Phases (Post-v1)
 
-**Goal:** Enable topology modification - add/remove devices and manage connections
-
-**Requirements Mapped:**
-| Requirement | Description |
-|-------------|-------------|
-| TOPO-03 | Add new devices to topology |
-| TOPO-04 | Remove devices from topology |
-| TOPO-05 | Create connections between devices |
-| TOPO-06 | Delete connections between devices |
-
-**Success Criteria:**
-1. User can add a new device with `ensp-cli add-device <name> --type <type>`
-2. User can remove a device with `ensp-cli remove-device <name>`
-3. User can connect two devices with `ensp-cli connect <dev1> <dev2>`
-4. User can disconnect devices with `ensp-cli disconnect <dev1> <dev2>`
-5. Changes are saved back to the .topo file
-6. Visual output reflects changes immediately
-
-**Key Components:**
-- Topology modification API
-- Device add/remove commands
-- Connect/disconnect commands
-- XML serialization for save
-- Backup/rollback mechanism
-
----
-
-## Future Phases (Post-v1.1)
-
-- **Phase 5:** Multi-Device Operations (broadcast commands, batch execution)
-- **Phase 6:** Configuration Management (snapshots, exports)
-- **Phase 7:** Structured Output & LLM Integration (TextFSM, agent export)
+- **Phase 4:** Multi-Device Operations (broadcast commands, batch execution)
+- **Phase 5:** Configuration Management (snapshots, exports)
+- **Phase 6:** Structured Output & LLM Integration (TextFSM, agent export)
 
 ---
 

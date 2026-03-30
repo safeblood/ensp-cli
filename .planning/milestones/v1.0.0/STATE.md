@@ -22,7 +22,6 @@
 | 1 | Foundation & Topology Parsing | 🟢 Complete | TOPO-01, TOPO-02 |
 | 2 | Telnet Connection Layer | 🟢 Complete | CONN-01, CONN-02 |
 | 3 | Command Execution & CLI Polish | 🟢 Complete | EXEC-01, CLI-01, CLI-02, CLI-03 |
-| 4 | Device Operations | 🟡 In Progress | TOPO-03, TOPO-04, TOPO-05, TOPO-06 |
 
 ---
 
@@ -79,32 +78,16 @@
 - ✅ Version bumped to 1.0.0
 - ✅ README updated with full documentation
 - ✅ Exit codes documented
-- ✅ Phase 4 planned: Device Operations
 
 ---
 
 ## Next Steps
 
-### Phase 4: Device Operations (Planned) 🔵
+v1.0.0 is complete! Future work could include:
 
-**New Commands:**
-- `ensp-cli add-device <name> --type <type>` - Add new device
-- `ensp-cli remove-device <name>` - Remove device
-- `ensp-cli connect <dev1> <dev2> --port1 <p1> --port2 <p2>` - Connect devices
-- `ensp-cli disconnect <dev1> <dev2>` - Disconnect devices
-
-**Features:**
-- Add/remove devices from topology
-- Create/delete connections
-- Save changes to .topo file
-- Automatic backup before modification
-
-**Status:** Ready for planning
-
-### Future Phases (v1.2+)
-- **Phase 5**: Multi-Device Operations (broadcast commands, batch execution)
-- **Phase 6**: Configuration Management (snapshots, exports, diff)
-- **Phase 7**: LLM Integration (TextFSM parsing, structured output)
+- **Phase 4**: Multi-Device Operations (broadcast commands, batch execution)
+- **Phase 5**: Configuration Management (snapshots, exports, diff)
+- **Phase 6**: LLM Integration (TextFSM parsing, structured output)
 
 ---
 

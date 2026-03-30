@@ -108,12 +108,15 @@ class TelnetClient:
                 # Read available data with timeout
                 data = await asyncio.wait_for(
                     self._reader.read(4096),  # type: ignore
-                    timeout=min(0.1, remaining)
+                    timeout=min(0.5, remaining)
                 )
                 
                 if data:
-                    # Decode using ascii with replace for VRP compatibility
-                    decoded = data.decode("ascii", errors="replace")
+                    # telnetlib3 may return bytes or strings
+                    if isinstance(data, bytes):
+                        decoded = data.decode("ascii", errors="replace")
+                    else:
+                        decoded = data
                     self._buffer += decoded
                     
                     # Check if pattern matches
@@ -150,7 +153,7 @@ class TelnetClient:
             while True:
                 data = await asyncio.wait_for(
                     self._reader.read(4096),  # type: ignore
-                    timeout=0.01
+                    timeout=0.05
                 )
                 if not data:
                     break

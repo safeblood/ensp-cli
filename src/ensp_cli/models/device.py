@@ -1,5 +1,7 @@
 """Device model for eNSP topology entities."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -11,12 +13,16 @@ class Device(BaseModel):
         device_type: Type of device (e.g., "Router", "Switch", "Firewall").
         model: Device model (e.g., "AR2220", "S5700").
         console_port: Telnet port number for console access.
+        x: X coordinate from XML (cx attribute) for visual layout.
+        y: Y coordinate from XML (cy attribute) for visual layout.
     """
     
     name: str = Field(..., description="Device identifier from XML")
     device_type: str = Field(..., description="Device type (e.g., Router, Switch, Firewall)")
     model: str = Field(..., description="Device model (e.g., AR2220, S5700)")
     console_port: int = Field(..., description="Telnet port number for console access")
+    x: Optional[float] = Field(default=None, description="X coordinate for visual layout")
+    y: Optional[float] = Field(default=None, description="Y coordinate for visual layout")
     
     @field_validator("name")
     @classmethod

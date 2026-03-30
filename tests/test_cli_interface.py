@@ -52,7 +52,7 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "Exit codes:" in result.output
         assert "0: Success" in result.output
-        assert "1: Connection error or device not found" in result.output
+        assert "1: General error or device not found" in result.output
         assert "2: Topology file not found" in result.output
         assert "3: Parse error" in result.output
         assert "5: Command timeout" in result.output

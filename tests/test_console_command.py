@@ -11,7 +11,7 @@ from ensp_cli.commands.console import (
     console_async,
     console_command,
     find_topology_file,
-    get_device_or_exit,
+    get_device_or_none,
     parse_topology,
 )
 from ensp_cli.models import Device, Topology
@@ -82,7 +82,7 @@ class TestFindTopologyFile:
 
 
 class TestGetDeviceOrExit:
-    """Tests for get_device_or_exit function."""
+    """Tests for get_device_or_none function."""
 
     def test_device_found(self) -> None:
         """Test device is returned when found."""
@@ -98,7 +98,7 @@ class TestGetDeviceOrExit:
             connections=[],
         )
         
-        result = get_device_or_exit(topology, "Router1")
+        result = get_device_or_none(topology, "Router1")
         
         assert result == device
 
@@ -116,14 +116,13 @@ class TestGetDeviceOrExit:
             connections=[],
         )
         
-        with pytest.raises(typer.Exit) as exc_info:
-            get_device_or_exit(topology, "UnknownDevice")
+        result = get_device_or_none(topology, "UnknownDevice")
         
-        assert exc_info.value.exit_code == 1
+        assert result is None
         
         captured = capsys.readouterr()
-        assert "Device 'UnknownDevice' not found" in captured.err
-        assert "Available devices: Router1" in captured.err
+        assert "Device 'UnknownDevice' not found" in captured.out
+        assert "Available devices: Router1" in captured.out
 
     def test_device_not_found_shows_all_devices(self, capsys) -> None:
         """Test error message shows all available devices."""
@@ -137,13 +136,12 @@ class TestGetDeviceOrExit:
             connections=[],
         )
         
-        with pytest.raises(typer.Exit) as exc_info:
-            get_device_or_exit(topology, "Switch1")
+        result = get_device_or_none(topology, "Switch1")
         
-        assert exc_info.value.exit_code == 1
+        assert result is None
         
         captured = capsys.readouterr()
-        assert "Router0, Router1, Router2" in captured.err
+        assert "Router0, Router1, Router2" in captured.out
 
 
 class TestParseTopology:
@@ -182,7 +180,7 @@ class TestConsoleAsync:
         
         assert exit_code == 1
         captured = capsys.readouterr()
-        assert "Device 'UnknownDevice' not found" in captured.err
+        assert "Device 'UnknownDevice' not found" in captured.out
 
     @pytest.mark.asyncio
     async def test_device_not_found_json_output(self, tmp_path: Path, monkeypatch, capsys) -> None:
@@ -207,7 +205,7 @@ class TestConsoleAsync:
         
         assert exit_code == 1
         captured = capsys.readouterr()
-        assert "No .topo file found" in captured.err
+        assert "No .topo file found" in captured.out
 
     @pytest.mark.asyncio
     async def test_topology_file_not_found_json(self, tmp_path: Path, monkeypatch, capsys) -> None:
@@ -251,7 +249,7 @@ class TestConsoleAsync:
         
         assert exit_code == 1
         captured = capsys.readouterr()
-        assert "Connection refused" in captured.err
+        assert "Connection refused" in captured.out
 
     @pytest.mark.asyncio
     async def test_connection_error_json(self, tmp_path: Path, capsys) -> None:
