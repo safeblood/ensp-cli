@@ -82,10 +82,22 @@ Destination/Mask    Proto   Pre  Cost        Flags NextHop         Interface
 """
 
 
-def create_mock_client(output_chunks: list[str]):
-    """Create a mock TelnetClient that returns chunks sequentially."""
+def create_mock_client(output_chunks: list[str], disable_paging: bool = True):
+    """Create a mock TelnetClient that returns chunks sequentially.
+    
+    Args:
+        output_chunks: Chunks to return for the main command.
+        disable_paging: Whether to simulate screen-length 0 temporary response.
+    """
     mock_client = MagicMock()
-    chunk_iter = iter(output_chunks)
+    
+    # If disable_paging is True, prepend screen-length command output
+    if disable_paging:
+        all_chunks = ["", ""] + output_chunks  # Two empty chunks for screen-length command
+    else:
+        all_chunks = output_chunks
+    
+    chunk_iter = iter(all_chunks)
     
     async def mock_read_available():
         await asyncio.sleep(0.01)  # Small delay to simulate I/O

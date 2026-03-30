@@ -39,13 +39,14 @@ async def execute_command(
         asyncio.TimeoutError: If command times out.
     """
     async with device_session(device, timeout) as client:
-        return await _execute_command_on_client(client, command, timeout)
+        return await _execute_command_on_client(client, command, timeout, disable_paging=True)
 
 
 async def _execute_command_on_client(
     client,
     command: str,
     timeout: float = 10.0,
+    disable_paging: bool = True,
 ) -> str:
     """Execute a command on an existing client connection.
     
@@ -55,6 +56,7 @@ async def _execute_command_on_client(
         client: Connected Telnet client.
         command: The command to execute.
         timeout: Timeout in seconds for operations.
+        disable_paging: Whether to disable screen paging.
         
     Returns:
         Clean command output (without command echo or prompt).
@@ -62,6 +64,13 @@ async def _execute_command_on_client(
     # Wait for device to be ready and clear initial output
     await asyncio.sleep(0.3)
     await client.read_available()
+    
+    # Disable paging to prevent "---- More ----" prompts
+    if disable_paging:
+        await client.write_line("screen-length 0 temporary")
+        await asyncio.sleep(0.3)
+        # Read and discard the output
+        await client.read_available()
     
     # Send command
     await client.write_line(command)
@@ -147,13 +156,18 @@ async def execute_batch(
     results = []
     
     async with device_session(device, timeout) as client:
+        # Disable paging once at the beginning
+        await client.write_line("screen-length 0 temporary")
+        await asyncio.sleep(0.3)
+        await client.read_available()
+        
         for cmd in commands:
             cmd = cmd.strip()
             if not cmd:
                 continue
                 
             try:
-                output = await _execute_command_on_client(client, cmd, timeout)
+                output = await _execute_command_on_client(client, cmd, timeout, disable_paging=False)
                 results.append({
                     "command": cmd,
                     "output": output,
