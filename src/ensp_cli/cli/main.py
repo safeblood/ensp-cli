@@ -21,7 +21,7 @@ from ensp_cli.commands.config import (
     show_routes_command,
 )
 from ensp_cli.commands.console import console_command
-from ensp_cli.commands.exec import exec_command
+from ensp_cli.commands.exec import exec_batch_command, exec_command
 
 
 class OutputFormat(str, Enum):
@@ -92,6 +92,7 @@ def main(
 # Register commands
 app.command(name="console")(console_command)
 app.command(name="exec")(exec_command)
+app.command(name="exec-batch")(exec_batch_command)
 app.command(name="show-config")(show_config_command)
 app.command(name="show-interfaces")(show_interfaces_command)
 app.command(name="show-routes")(show_routes_command)
