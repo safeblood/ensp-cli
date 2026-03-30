@@ -56,6 +56,7 @@ def create_mock_client(output_chunks: list[str], disable_paging: bool = True):
     
     mock_client.read_available = mock_read_available
     mock_client.write_line = AsyncMock()
+    mock_client.write = AsyncMock()
     return mock_client
 
 
@@ -225,6 +226,7 @@ class TestExecAsync:
         mock_client = MagicMock()
         mock_client.read_available = AsyncMock(return_value="")
         mock_client.write_line = AsyncMock()
+        mock_client.write = AsyncMock()
         
         with patch("ensp_cli.commands.exec.device_session") as mock_session:
             mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -285,6 +287,7 @@ class TestCommandTimeoutHandling:
         mock_client = MagicMock()
         mock_client.read_available = AsyncMock(return_value="")
         mock_client.write_line = AsyncMock()
+        mock_client.write = AsyncMock()
         
         with patch("ensp_cli.commands.exec.device_session") as mock_session:
             mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_client)

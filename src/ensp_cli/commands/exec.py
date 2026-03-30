@@ -60,8 +60,16 @@ async def _execute_command_on_client(
         Clean command output (without command echo or prompt).
     """
     # Wait for device to be ready and clear initial output
-    await asyncio.sleep(0.3)
-    await client.read_available()
+    await asyncio.sleep(0.5)
+    
+    # Clear any pending output
+    initial_clear = await client.read_available()
+    
+    # If no prompt seen yet, send newline to wake up device
+    if not initial_clear or not VRP_PROMPT_ANY.search(initial_clear):
+        await client.write("\r\n")
+        await asyncio.sleep(0.3)
+        initial_clear = await client.read_available()
     
     # Send command
     await client.write_line(command)
@@ -116,16 +124,23 @@ async def _execute_command_on_client(
     output = all_output.replace('\r\n', '\n')
     lines = output.splitlines()
     
-    # Find and remove the command echo line
-    # It may contain the prompt prefix like "[R2]display ..." or just "display ..."
+    # Find and remove the command echo line(s)
+    # Command echo may span multiple lines or include prompt prefix
     command_stripped = command.strip()
     first_content_line = 0
+    accumulated_echo = ""
+    
     for i, line in enumerate(lines):
         # Remove prompt prefix if present (both <R2> and [R2] formats)
-        clean_line = line
-        for pattern in [r'^[<\[][^\]>]+[>\]]\s*']:
-            clean_line = re.sub(pattern, '', line)
-        if command_stripped in clean_line or command_stripped in line:
+        clean_line = re.sub(r'^[<\[][^\]>]+[>\]]\s*', '', line)
+        accumulated_echo += clean_line
+        
+        # Check if we've seen the complete command
+        if command_stripped in accumulated_echo:
+            first_content_line = i + 1
+            break
+        # Also check original line (might have special formatting)
+        if command_stripped in line:
             first_content_line = i + 1
             break
     
