@@ -204,6 +204,11 @@ def console_command(
         ensp-cli console Router1
         ensp-cli console Router1 --topology mylab.topo
         ensp-cli console Router1 --output json
+    
+    Exit codes:
+        0: Success or user disconnect
+        1: Connection error or device not found
+        2: Topology file not found
     """
     import asyncio
     
