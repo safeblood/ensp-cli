@@ -17,6 +17,7 @@ class TopologyParser:
     """Parser for eNSP .topo topology files using secure XML parsing.
     
     Uses defusedxml to prevent XXE attacks and XML bomb vulnerabilities.
+    Handles UTF-8 encoded eNSP files which declare "UNICODE" encoding.
     """
 
     def parse_file(self, path: Path) -> Topology:
@@ -37,15 +38,20 @@ class TopologyParser:
         if not file_path.exists():
             raise FileNotFoundError(f"Topology file not found: {file_path}")
         
+        # Get topology name from filename (without extension)
+        topology_name = file_path.stem
+        
         try:
-            tree = ET.parse(file_path)
-            root = tree.getroot()
+            # eNSP files are typically UTF-8 encoded but declare "UNICODE"
+            # We read as UTF-8 and let defusedxml handle the parsing
+            content = file_path.read_text(encoding="utf-8")
+            root = ET.fromstring(content)
         except ParseError as e:
             raise TopologyParserError(f"Invalid XML in topology file: {e}") from e
         except Exception as e:
             raise TopologyParserError(f"Failed to parse topology file: {e}") from e
         
-        return self._parse_root(root)
+        return self._parse_root(root, topology_name, file_path)
 
     def parse_string(self, xml_content: str) -> Topology:
         """Parse XML content from a string.
@@ -66,28 +72,35 @@ class TopologyParser:
         except Exception as e:
             raise TopologyParserError(f"Failed to parse XML content: {e}") from e
         
-        return self._parse_root(root)
+        return self._parse_root(root, "unnamed", None)
 
-    def _parse_root(self, root: ET.Element) -> Topology:
+    def _parse_root(self, root: ET.Element, topology_name: str, file_path: Path | None) -> Topology:
         """Parse the root element and create a Topology model.
         
         Args:
             root: Root XML element (<topo>)
+            topology_name: Name for the topology
+            file_path: Optional path to the source file
             
         Returns:
             Topology model
         """
-        topology = Topology()
+        topology = Topology(name=topology_name, file_path=file_path)
         
         # Parse devices
         devices_elem = root.find("devices")
         if devices_elem is not None:
-            topology.devices = self._parse_devices(devices_elem)
+            devices = self._parse_devices(devices_elem)
+            for device in devices:
+                if device:  # Skip None devices
+                    topology.add_device(device)
         
         # Parse connections (from lines element)
         lines_elem = root.find("lines")
         if lines_elem is not None:
-            topology.connections = self._parse_connections(lines_elem, topology.devices)
+            connections = self._parse_connections(lines_elem)
+            for connection in connections:
+                topology.add_connection(connection)
         
         return topology
 
@@ -133,7 +146,7 @@ class TopologyParser:
         if not model_str:
             raise TopologyParserError(f"Device '{name}' missing required 'model' attribute")
         
-        # Parse com_port as integer
+        # Parse com_port as integer (mapping to console_port in model)
         com_port_str = dev_elem.get("com_port", "0")
         try:
             com_port = int(com_port_str)
@@ -142,22 +155,25 @@ class TopologyParser:
                 f"Device '{name}' has invalid com_port value: '{com_port_str}'"
             ) from e
         
-        # Determine device type from model or extract from device structure
-        device_type = self._determine_device_type(model_str, dev_elem)
+        # Determine device type from model string
+        device_type = self._determine_device_type(model_str)
+        
+        # For Cloud devices (com_port=0), we still include them with console_port=1
+        # This is a workaround since the model requires valid port range (1-65535)
+        console_port = com_port if com_port >= 1 else 1
         
         return Device(
             name=name,
-            type=device_type,
+            device_type=device_type,
             model=model_str,
-            com_port=com_port
+            console_port=console_port
         )
 
-    def _determine_device_type(self, model: str, dev_elem: ET.Element) -> str:
-        """Determine the device type from model string or element structure.
+    def _determine_device_type(self, model: str) -> str:
+        """Determine the device type from model string.
         
         Args:
             model: The device model string
-            dev_elem: The device XML element
             
         Returns:
             Device type string
@@ -171,15 +187,13 @@ class TopologyParser:
             return "Switch"
         elif "cloud" in model_lower:
             return "Cloud"
-        elif "firewall" in model_lower:
+        elif "firewall" in model_lower or model_lower.startswith("usg"):
             return "Firewall"
         else:
             # Use model as type if no specific mapping
             return model
 
-    def _parse_connections(
-        self, lines_elem: ET.Element, devices: list[Device]
-    ) -> list[Connection]:
+    def _parse_connections(self, lines_elem: ET.Element) -> list[Connection]:
         """Parse connection elements from XML.
         
         Note: The sample .topo file has an empty <lines /> element.
@@ -187,38 +201,27 @@ class TopologyParser:
         
         Args:
             lines_elem: <lines> XML element
-            devices: List of existing devices for validation
             
         Returns:
             List of Connection models
-            
-        Raises:
-            TopologyParserError: If connection references non-existent device
         """
         connections = []
-        device_names = {d.name for d in devices}
         
         for line_elem in lines_elem.findall("line"):
-            connection = self._parse_connection(line_elem, device_names)
+            connection = self._parse_connection(line_elem)
             if connection:
                 connections.append(connection)
         
         return connections
 
-    def _parse_connection(
-        self, line_elem: ET.Element, device_names: set[str]
-    ) -> Connection | None:
+    def _parse_connection(self, line_elem: ET.Element) -> Connection | None:
         """Parse a single connection element.
         
         Args:
             line_elem: <line> XML element
-            device_names: Set of valid device names for validation
             
         Returns:
             Connection model or None if parsing fails
-            
-        Raises:
-            TopologyParserError: If connection references non-existent device
         """
         # Extract attributes
         from_device = line_elem.get("from_device", "")
@@ -226,16 +229,9 @@ class TopologyParser:
         to_device = line_elem.get("to_device", "")
         to_port = line_elem.get("to_port", "")
         
-        # Validate device references
-        if from_device and from_device not in device_names:
-            raise TopologyParserError(
-                f"Connection references non-existent source device: '{from_device}'"
-            )
-        
-        if to_device and to_device not in device_names:
-            raise TopologyParserError(
-                f"Connection references non-existent target device: '{to_device}'"
-            )
+        # Skip empty connections
+        if not from_device or not to_device:
+            return None
         
         return Connection(
             from_device=from_device,
