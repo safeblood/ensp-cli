@@ -54,9 +54,15 @@ async def execute_command(
             chunk = await client.read_available()
             if chunk:
                 all_output += chunk
-                # Check if we have the prompt
-                if VRP_PROMPT_ANY.search(all_output):
-                    break
+                # Check if we have the prompt (look at last few lines only)
+                # Split by lines and check the last non-empty line
+                lines = all_output.replace('\r\n', '\n').split('\n')
+                # Get last few non-empty lines
+                recent_lines = [line for line in lines[-3:] if line.strip()]
+                if recent_lines:
+                    last_line = recent_lines[-1].strip()
+                    if VRP_PROMPT_ANY.search(last_line):
+                        break
             
             # Check timeout
             if asyncio.get_event_loop().time() - start_time > timeout:
