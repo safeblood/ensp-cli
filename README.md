@@ -1,5 +1,7 @@
 # eNSP CLI
 
+QQ group:808488619
+
 A CLI tool for managing eNSP (Enterprise Network Simulation Platform) topology files and device connections.
 
 ## Features
