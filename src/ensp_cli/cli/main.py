@@ -13,6 +13,9 @@ from ensp_cli import __version__
 from ensp_cli.models import Topology
 from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
 
+# Import commands
+from ensp_cli.commands.console import console_command
+
 
 class OutputFormat(str, Enum):
     """Output format options."""
@@ -60,6 +63,10 @@ def main(
         4 - Permission denied
     """
     pass
+
+
+# Register commands
+app.command(name="console")(console_command)
 
 
 def _output_json(topology: Topology) -> None:
