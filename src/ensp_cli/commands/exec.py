@@ -7,40 +7,14 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from rich.console import Console
-from rich.syntax import Syntax
 
 from ensp_cli.connection_manager import device_session
 from ensp_cli.models import Device, Topology
-from ensp_cli.output import OutputFormat, output_error, output_json
 from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
 from ensp_cli.telnet_client import VRP_PROMPT_ANY
 
 # Import helper functions from console
 from ensp_cli.commands.console import find_topology_file, get_device_or_exit, parse_topology
-
-console = Console()
-
-
-def output_with_syntax_highlighting(data: str, lexer: str = "cisco") -> None:
-    """Output text with syntax highlighting using Rich Syntax.
-    
-    Args:
-        data: Text to output.
-        lexer: Pygments lexer to use for highlighting.
-    """
-    try:
-        syntax = Syntax(
-            data,
-            lexer,
-            theme="monokai",
-            line_numbers=False,
-            word_wrap=True,
-        )
-        console.print(syntax)
-    except Exception:
-        # Fallback to plain text if Syntax fails
-        print(data)
 
 
 async def execute_command(
@@ -93,7 +67,7 @@ async def exec_async(
     device_name: str,
     command: str,
     topology_path: Optional[Path],
-    output_format: OutputFormat,
+    output_format: str,
     timeout: float = 10.0,
 ) -> int:
     """Async implementation of exec command.
@@ -102,7 +76,7 @@ async def exec_async(
         device_name: Name of the device to connect to.
         command: Command to execute.
         topology_path: Optional path to topology file.
-        output_format: Output format (text or json).
+        output_format: Output format ("text" or "json").
         timeout: Timeout in seconds for command execution.
         
     Returns:
@@ -119,40 +93,70 @@ async def exec_async(
         topology = parse_topology(topo_file)
         
         # Find device
-        device = get_device_or_exit(topology, device_name, output_format.value)
+        device = get_device_or_exit(topology, device_name, output_format)
         
         # Execute command
         output = await execute_command(device, command, timeout)
         
         # Output result
-        if output_format == OutputFormat.JSON:
-            output_json({
+        if output_format.lower() == "json":
+            print(json.dumps({
                 "status": "success",
                 "device": device_name,
                 "command": command,
                 "output": output,
-            })
+            }))
         else:
-            # Text output with syntax highlighting
-            output_with_syntax_highlighting(output)
+            # Text output - print clean output directly
+            print(output)
         
         return 0
         
     except FileNotFoundError as e:
-        output_error(str(e), output_format)
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         return 2
     except ValueError as e:
-        output_error(str(e), output_format)
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         return 1
     except TopologyParserError as e:
-        output_error(f"Failed to parse topology file: {e}", output_format)
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": f"Failed to parse topology file: {e}",
+            }))
+        else:
+            print(f"Error: Failed to parse topology file: {e}", file=sys.stderr)
         return 3
     except ConnectionError as e:
-        output_error(str(e), output_format)
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         return 1
     except asyncio.TimeoutError:
         error_msg = f"Command timed out after {timeout} seconds"
-        output_error(error_msg, output_format)
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": error_msg,
+            }))
+        else:
+            print(f"Error: {error_msg}", file=sys.stderr)
         return 5
 
 
@@ -174,8 +178,8 @@ def exec_command(
         "--timeout",
         help="Command timeout in seconds",
     ),
-    output: OutputFormat = typer.Option(
-        OutputFormat.TEXT,
+    output: str = typer.Option(
+        "text",
         "--output",
         "-o",
         help="Output format (text or json)",
@@ -191,13 +195,6 @@ def exec_command(
         ensp-cli exec Router1 "display version"
         ensp-cli exec Router1 "display ip interface brief" --output json
         ensp-cli exec Router1 "system-view" --topology mylab.topo
-    
-    Exit codes:
-        0: Success
-        1: Connection error or device not found
-        2: Topology file not found
-        3: Parse error
-        5: Command timeout
     """
     exit_code = asyncio.run(exec_async(device_name, command, topology, output, timeout))
     raise typer.Exit(exit_code)
