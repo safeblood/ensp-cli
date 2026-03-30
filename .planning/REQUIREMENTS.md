@@ -3,8 +3,8 @@
 ## v1 Requirements (MVP)
 
 ### Topology (TOPO)
-- [ ] **TOPO-01**: User can parse `.topo` XML files and list all devices with names, types, models, and console ports
-- [ ] **TOPO-02**: User can view topology structure including device-to-device connections
+- [x] **TOPO-01**: User can parse `.topo` XML files and list all devices with names, types, models, and console ports
+- [x] **TOPO-02**: User can view topology structure including device-to-device connections
 
 ### Connection (CONN)
 - [ ] **CONN-01**: User can connect to device console via Telnet (127.0.0.1:com_port)
