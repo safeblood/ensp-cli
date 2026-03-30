@@ -1680,3 +1680,679 @@ def import_all_command(
         timeout=timeout,
     ))
     raise typer.Exit(exit_code)
+
+# =============================================================================
+# Diff Configuration Commands
+# =============================================================================
+
+from typing import List
+
+from rich.columns import Columns
+from rich.panel import Panel
+
+from ensp_cli.services.config_differ import ConfigDiffer, ConfigDiff
+
+
+async def diff_config_async(
+    device1_name: str,
+    device2_name: str,
+    topology_path: Optional[Path],
+    section: Optional[str],
+    ignore_patterns: List[str],
+    output_format: str,
+    smart_ignore: bool,
+    timeout: float = 10.0,
+) -> int:
+    """Async implementation of diff-config command.
+    
+    Args:
+        device1_name: Name of first device.
+        device2_name: Name of second device.
+        topology_path: Optional path to topology file.
+        section: Optional section to compare.
+        ignore_patterns: Additional patterns to ignore.
+        output_format: Output format (text, json, unified).
+        smart_ignore: If True, filter volatile fields.
+        timeout: Timeout in seconds.
+        
+    Returns:
+        Exit code.
+    """
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Find both devices
+        device1 = get_device_or_none(topology, device1_name, output_format)
+        if device1 is None:
+            return 1
+        device2 = get_device_or_none(topology, device2_name, output_format)
+        if device2 is None:
+            return 1
+        
+        # Fetch configurations
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            progress.add_task(f"Fetching config from {device1_name}...", total=None)
+            config1 = await execute_show_command(device1, "display current-configuration", timeout)
+            
+            progress.add_task(f"Fetching config from {device2_name}...", total=None)
+            config2 = await execute_show_command(device2, "display current-configuration", timeout)
+        
+        # Compare configurations
+        differ = ConfigDiffer(ignore_patterns=ignore_patterns)
+        diff_result = differ.compare_configs(
+            config1, config2,
+            config1_name=device1_name,
+            config2_name=device2_name,
+            smart_ignore=smart_ignore,
+            section=section,
+        )
+        
+        # Output result
+        if output_format.lower() == "json":
+            print(json.dumps(diff_result.to_dict()))
+        elif output_format.lower() == "unified":
+            print(diff_result.unified_diff)
+        else:
+            # Text output with color coding
+            _display_diff_text(device1_name, device2_name, diff_result, section)
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except ValueError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except TopologyParserError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": f"Failed to parse topology file: {e}"}))
+        else:
+            console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except ConnectionError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except asyncio.TimeoutError:
+        error_msg = f"Command timed out after {timeout} seconds"
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": error_msg}))
+        else:
+            console.print(f"[red]Error: {error_msg}[/red]")
+        return 5
+
+
+def _display_diff_text(device1_name: str, device2_name: str, diff: ConfigDiff, section: Optional[str] = None):
+    """Display diff result in formatted text output.
+    
+    Args:
+        device1_name: Name of first device.
+        device2_name: Name of second device.
+        diff: ConfigDiff result.
+        section: Optional section that was compared.
+    """
+    # Header
+    title = f"Configuration Comparison: {device1_name} vs {device2_name}"
+    if section:
+        title += f" (Section: {section})"
+    
+    console.print(f"\n[bold cyan]{title}[/bold cyan]")
+    console.print("=" * 60)
+    
+    # Summary
+    sim_percent = diff.similarity * 100
+    sim_color = "green" if sim_percent >= 90 else "yellow" if sim_percent >= 70 else "red"
+    
+    console.print(f"\n[bold]Summary:[/bold]")
+    console.print(f"  Similarity: [{sim_color}]{sim_percent:.1f}%[/{sim_color}]")
+    console.print(f"  Lines added: [green]{diff.added_count}[/green]")
+    console.print(f"  Lines removed: [red]{diff.removed_count}[/red]")
+    console.print(f"  Lines unchanged: {diff.unchanged_count}")
+    
+    # Detailed diff
+    if diff.lines:
+        console.print(f"\n[bold]Differences:[/bold]")
+        console.print("-" * 60)
+        
+        for line in diff.lines:
+            if line.line_type == 'added':
+                console.print(f"[green]+ {line.content}[/green]")
+            elif line.line_type == 'removed':
+                console.print(f"[red]- {line.content}[/red]")
+            elif line.line_type == 'info':
+                console.print(f"[dim]{line.content}[/dim]")
+            # Skip unchanged lines for cleaner output
+    else:
+        console.print(f"\n[green]✓ Configurations are identical[/green]")
+    
+    console.print()
+
+
+@app.command(name="diff-config")
+def diff_config_command(
+    device1: str = typer.Argument(..., help="First device name"),
+    device2: str = typer.Argument(..., help="Second device name"),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    section: Optional[str] = typer.Option(
+        None,
+        "--section",
+        "-s",
+        help="Compare specific section only (interface, ospf, bgp, acl, vlan, routing, snmp, ntp)",
+    ),
+    ignore: List[str] = typer.Option(
+        [],
+        "--ignore",
+        "-i",
+        help="Regex patterns to ignore (can be specified multiple times)",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output",
+        "-o",
+        help="Output format: text, json, unified",
+    ),
+    smart_ignore: bool = typer.Option(
+        False,
+        "--smart-ignore",
+        "-S",
+        help="Ignore volatile fields (timestamps, uptime, etc.)",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds",
+    ),
+) -> None:
+    """Compare configurations between two devices.
+    
+    Fetches configurations from both devices and displays differences
+    with color coding (green=added, red=removed).
+    
+    Examples:
+        ensp-cli diff-config R1 R2
+        ensp-cli diff-config R1 R2 --section interface
+        ensp-cli diff-config R1 R2 --smart-ignore
+        ensp-cli diff-config R1 R2 --output json
+        ensp-cli diff-config R1 R2 --output unified > diff.txt
+    
+    Exit codes:
+        0: Success
+        1: General error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
+    """
+    exit_code = asyncio.run(diff_config_async(
+        device1_name=device1,
+        device2_name=device2,
+        topology_path=topo_file,
+        section=section,
+        ignore_patterns=ignore,
+        output_format=output,
+        smart_ignore=smart_ignore,
+        timeout=timeout,
+    ))
+    raise typer.Exit(exit_code)
+
+
+async def diff_file_async(
+    device_name: str,
+    config_file: Path,
+    topology_path: Optional[Path],
+    section: Optional[str],
+    smart_ignore: bool,
+    output_format: str,
+    timeout: float = 10.0,
+) -> int:
+    """Async implementation of diff-file command.
+    
+    Args:
+        device_name: Name of device to compare.
+        config_file: Path to configuration file.
+        topology_path: Optional path to topology file.
+        section: Optional section to compare.
+        smart_ignore: If True, filter volatile fields.
+        output_format: Output format (text, json, unified).
+        timeout: Timeout in seconds.
+        
+    Returns:
+        Exit code.
+    """
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Find device
+        device = get_device_or_none(topology, device_name, output_format)
+        if device is None:
+            return 1
+        
+        # Fetch device configuration
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            progress.add_task(f"Fetching config from {device_name}...", total=None)
+            device_config = await execute_show_command(device, "display current-configuration", timeout)
+        
+        # Read file configuration
+        try:
+            file_config = config_file.read_text(encoding='utf-8')
+        except Exception as e:
+            if output_format.lower() == "json":
+                print(json.dumps({"status": "error", "error": f"Failed to read file: {e}"}))
+            else:
+                console.print(f"[red]Error: Failed to read file: {e}[/red]")
+            return 1
+        
+        # Compare configurations
+        differ = ConfigDiffer()
+        diff_result = differ.compare_configs(
+            file_config,  # baseline first
+            device_config,  # current config second
+            config1_name=str(config_file),
+            config2_name=device_name,
+            smart_ignore=smart_ignore,
+            section=section,
+        )
+        
+        # Output result
+        if output_format.lower() == "json":
+            print(json.dumps(diff_result.to_dict()))
+        elif output_format.lower() == "unified":
+            print(diff_result.unified_diff)
+        else:
+            # Text output
+            console.print(f"\n[bold cyan]Configuration Drift: {config_file} vs {device_name}[/bold cyan]")
+            console.print("=" * 60)
+            
+            sim_percent = diff_result.similarity * 100
+            sim_color = "green" if sim_percent >= 90 else "yellow" if sim_percent >= 70 else "red"
+            
+            console.print(f"\n[bold]Drift Analysis:[/bold]")
+            console.print(f"  Match with baseline: [{sim_color}]{sim_percent:.1f}%[/{sim_color}]")
+            
+            if diff_result.added_count > 0:
+                console.print(f"  Lines added to device: [green]{diff_result.added_count}[/green]")
+            if diff_result.removed_count > 0:
+                console.print(f"  Lines missing from device: [red]{diff_result.removed_count}[/red]")
+            
+            if diff_result.lines and (diff_result.added_count > 0 or diff_result.removed_count > 0):
+                console.print(f"\n[bold]Differences from baseline:[/bold]")
+                console.print("-" * 60)
+                
+                for line in diff_result.lines:
+                    if line.line_type == 'added':
+                        console.print(f"[green]+ {line.content}[/green]")
+                    elif line.line_type == 'removed':
+                        console.print(f"[red]- {line.content}[/red]")
+            else:
+                console.print(f"\n[green]✓ Device matches baseline configuration[/green]")
+            
+            console.print()
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except ValueError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except TopologyParserError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": f"Failed to parse topology file: {e}"}))
+        else:
+            console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except ConnectionError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except asyncio.TimeoutError:
+        error_msg = f"Command timed out after {timeout} seconds"
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": error_msg}))
+        else:
+            console.print(f"[red]Error: {error_msg}[/red]")
+        return 5
+
+
+@app.command(name="diff-file")
+def diff_file_command(
+    device: str = typer.Argument(..., help="Device name"),
+    file: Path = typer.Argument(
+        ...,
+        help="Configuration file to compare against",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    section: Optional[str] = typer.Option(
+        None,
+        "--section",
+        "-s",
+        help="Compare specific section only",
+    ),
+    smart_ignore: bool = typer.Option(
+        False,
+        "--smart-ignore",
+        "-S",
+        help="Ignore volatile fields (timestamps, uptime, etc.)",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output",
+        "-o",
+        help="Output format: text, json, unified",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds",
+    ),
+) -> None:
+    """Compare device configuration with a saved file.
+    
+    Useful for checking configuration drift from a baseline.
+    
+    Examples:
+        ensp-cli diff-file R1 baseline.cfg
+        ensp-cli diff-file R1 baseline.cfg --section interface
+        ensp-cli diff-file R1 baseline.cfg --smart-ignore
+        ensp-cli diff-file R1 baseline.cfg --output json
+    
+    Exit codes:
+        0: Success
+        1: General error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
+    """
+    exit_code = asyncio.run(diff_file_async(
+        device_name=device,
+        config_file=file,
+        topology_path=topo_file,
+        section=section,
+        smart_ignore=smart_ignore,
+        output_format=output,
+        timeout=timeout,
+    ))
+    raise typer.Exit(exit_code)
+
+
+async def audit_configs_async(
+    topology_path: Optional[Path],
+    group_by: str,
+    threshold: float,
+    output_format: str,
+    timeout: float = 10.0,
+) -> int:
+    """Async implementation of audit-configs command.
+    
+    Args:
+        topology_path: Optional path to topology file.
+        group_by: How to group devices ('type' or 'model').
+        threshold: Similarity threshold for warnings.
+        output_format: Output format (text or json).
+        timeout: Timeout in seconds.
+        
+    Returns:
+        Exit code.
+    """
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        if not topology.devices:
+            if output_format.lower() == "json":
+                print(json.dumps({"status": "error", "error": "No devices found in topology"}))
+            else:
+                console.print("[yellow]No devices found in topology[/yellow]")
+            return 1
+        
+        # Fetch all configurations
+        configs = {}
+        device_info = {}
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Fetching configurations...", total=len(topology.devices))
+            
+            for device in topology.devices:
+                try:
+                    config = await execute_show_command(
+                        device, "display current-configuration", timeout
+                    )
+                    configs[device.name] = config
+                    device_info[device.name] = {
+                        'type': device.device_type,
+                        'model': device.model,
+                    }
+                except Exception as e:
+                    configs[device.name] = f"# Error: {e}"
+                    device_info[device.name] = {
+                        'type': device.device_type,
+                        'model': device.model,
+                        'error': str(e),
+                    }
+                progress.advance(task)
+        
+        # Group devices
+        groups: dict[str, list[str]] = {}
+        for name, info in device_info.items():
+            if 'error' in info:
+                continue
+            key = info.get(group_by, 'Unknown')
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(name)
+        
+        # Audit each group
+        differ = ConfigDiffer()
+        audit_results = []
+        
+        for group_name, device_names in sorted(groups.items()):
+            if len(device_names) < 2:
+                continue
+            
+            group_configs = {name: configs[name] for name in device_names}
+            audit = differ.audit_configs(group_configs, group_by, threshold)
+            audit['group_name'] = group_name
+            audit['devices'] = device_names
+            audit_results.append(audit)
+        
+        # Output results
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "success",
+                "topology": topology.name,
+                "group_by": group_by,
+                "threshold": threshold,
+                "results": audit_results,
+            }))
+        else:
+            # Text output
+            console.print(f"\n[bold cyan]Configuration Audit: {topology.name}[/bold cyan]")
+            console.print("=" * 60)
+            console.print(f"Group by: {group_by}")
+            console.print(f"Similarity threshold: {threshold:.0%}")
+            console.print(f"Total devices: {len(topology.devices)}")
+            
+            # Group summary
+            console.print(f"\n[bold]Device Groups:[/bold]")
+            for group_name, device_names in sorted(groups.items()):
+                console.print(f"  {group_name}: {', '.join(device_names)}")
+            
+            # Detailed audit results
+            if audit_results:
+                console.print(f"\n[bold]Comparison Results:[/bold]")
+                
+                for audit in audit_results:
+                    group_name = audit['group_name']
+                    devices = audit['devices']
+                    comparisons = audit.get('comparisons', [])
+                    warnings = audit.get('warnings', [])
+                    
+                    console.print(f"\n[cyan]{group_name} Group ({len(devices)} devices):[/cyan]")
+                    console.print(f"  Devices: {', '.join(devices)}")
+                    
+                    if comparisons:
+                        for comp in comparisons:
+                            sim = comp['similarity'] * 100
+                            sim_emoji = "✓" if sim >= threshold * 100 else "⚠️"
+                            sim_color = "green" if sim >= threshold * 100 else "yellow"
+                            console.print(f"    {comp['device1']} <-> {comp['device2']}: "
+                                        f"[{sim_color}]{sim:.0f}% similar[/{sim_color}] {sim_emoji}")
+                    else:
+                        console.print("    [dim]No comparisons (need 2+ devices)[/dim]")
+                    
+                    if warnings:
+                        console.print(f"  [yellow]⚠️ Warnings:[/yellow]")
+                        for warning in warnings:
+                            console.print(f"    - {warning['message']}")
+            else:
+                console.print(f"\n[yellow]No groups with multiple devices to compare[/yellow]")
+            
+            # Overall summary
+            total_warnings = sum(len(a.get('warnings', [])) for a in audit_results)
+            if total_warnings == 0:
+                console.print(f"\n[green]✓ All configurations are consistent (>{threshold:.0%} similar)[/green]")
+            else:
+                console.print(f"\n[yellow]⚠ Found {total_warnings} potential configuration inconsistency(s)[/yellow]")
+            
+            console.print()
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except TopologyParserError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": f"Failed to parse topology file: {e}"}))
+        else:
+            console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except Exception as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+
+
+@app.command(name="audit-configs")
+def audit_configs_command(
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    group_by: str = typer.Option(
+        "type",
+        "--group-by",
+        "-g",
+        help="Group devices by: type, model",
+    ),
+    threshold: float = typer.Option(
+        0.9,
+        "--threshold",
+        help="Similarity threshold for warnings (0.0-1.0)",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output",
+        "-o",
+        help="Output format: text, json",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds per device",
+    ),
+) -> None:
+    """Audit all device configurations for consistency.
+    
+    Compares configurations across similar devices and reports
+    significant differences that may indicate misconfigurations.
+    
+    Examples:
+        ensp-cli audit-configs
+        ensp-cli audit-configs --group-by model
+        ensp-cli audit-configs --threshold 0.85
+        ensp-cli audit-configs --output json
+    
+    Exit codes:
+        0: Success
+        1: General error
+        2: Topology file not found
+        3: Parse error
+    """
+    exit_code = asyncio.run(audit_configs_async(
+        topology_path=topo_file,
+        group_by=group_by,
+        threshold=threshold,
+        output_format=output,
+        timeout=timeout,
+    ))
+    raise typer.Exit(exit_code)
