@@ -49,16 +49,25 @@
 
 ## Traceability
 
-| Requirement | Phase | Implementation |
-|-------------|-------|----------------|
-| TOPO-01 | 1 | TopologyParser class, `list` command |
-| TOPO-02 | 1 | Connection parsing in TopologyParser |
-| CONN-01 | 2 | TelnetTransport class using telnetlib3 |
-| CONN-02 | 2 | `console` command with interactive session |
-| EXEC-01 | 3 | `exec` command, CommandExecutor service |
-| CLI-01 | 3 | Output formatter with JSON mode |
-| CLI-02 | 3 | Typer built-in help and version flags |
-| CLI-03 | 3 | Exit code handling in CLI commands |
+| Requirement | Phase | Description |
+|-------------|-------|-------------|
+| TOPO-01 | Phase 1 | Parse `.topo` XML files and list all devices with names, types, models, and console ports |
+| TOPO-02 | Phase 1 | View topology structure including device-to-device connections |
+| CONN-01 | Phase 2 | Connect to device console via Telnet (127.0.0.1:com_port) |
+| CONN-02 | Phase 2 | Start an interactive console session with a single device |
+| EXEC-01 | Phase 3 | Execute a single command on a device and return the output |
+| CLI-01 | Phase 3 | All commands support `--output json` for machine-readable output |
+| CLI-02 | Phase 3 | CLI provides help documentation and version flags |
+| CLI-03 | Phase 3 | CLI returns appropriate exit codes (0=success, non-zero=failure) |
+
+### Phase Mapping Summary
+
+| Phase | Requirements | Count |
+|-------|--------------|-------|
+| Phase 1: Foundation & Topology Parsing | TOPO-01, TOPO-02 | 2 |
+| Phase 2: Telnet Connection Layer | CONN-01, CONN-02 | 2 |
+| Phase 3: Command Execution & CLI Polish | EXEC-01, CLI-01, CLI-02, CLI-03 | 4 |
+| **Total v1** | | **8** |
 
 ---
 *Last updated: 2026-03-30 after requirements definition*
