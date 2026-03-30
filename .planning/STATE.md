@@ -80,6 +80,7 @@
 - ✅ README updated with full documentation
 - ✅ Exit codes documented
 - ✅ Phase 4 planned: Device Operations
+- ✅ **Code committed to Gitee**: https://gitee.com/safegeek/ensp-cli
 
 ---
 
