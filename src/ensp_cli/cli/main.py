@@ -15,6 +15,11 @@ from ensp_cli.output import output_json
 from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
 
 # Import commands
+from ensp_cli.commands.config import (
+    show_config_command,
+    show_interfaces_command,
+    show_routes_command,
+)
 from ensp_cli.commands.console import console_command
 from ensp_cli.commands.exec import exec_command
 
@@ -87,7 +92,9 @@ def main(
 # Register commands
 app.command(name="console")(console_command)
 app.command(name="exec")(exec_command)
-app.command(name="exec")(exec_command)
+app.command(name="show-config")(show_config_command)
+app.command(name="show-interfaces")(show_interfaces_command)
+app.command(name="show-routes")(show_routes_command)
 
 
 def _output_json(topology: Topology) -> None:

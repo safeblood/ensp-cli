@@ -1,0 +1,722 @@
+"""Config commands for displaying device configuration and status."""
+
+import asyncio
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.syntax import Syntax
+from rich.table import Table
+
+from ensp_cli.connection_manager import device_session
+from ensp_cli.models import Device, Topology
+from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
+
+# Import helper functions from console
+from ensp_cli.commands.console import find_topology_file, get_device_or_none, parse_topology
+from ensp_cli.commands.exec import execute_command
+
+console = Console()
+
+app = typer.Typer()
+
+
+async def execute_show_command(
+    device: Device,
+    command: str,
+    timeout: float = 10.0,
+) -> str:
+    """Execute a show command on a device and return the output.
+    
+    Args:
+        device: The device to execute command on.
+        command: The command to execute.
+        timeout: Timeout in seconds for operations.
+        
+    Returns:
+        Clean command output (without command echo or prompt).
+    """
+    return await execute_command(device, command, timeout)
+
+
+def filter_config_section(config_output: str, section: str) -> str:
+    """Filter configuration output for a specific section.
+    
+    Args:
+        config_output: Full configuration output.
+        section: Section name to filter (e.g., 'interface', 'ospf', 'bgp').
+        
+    Returns:
+        Filtered configuration section.
+    """
+    lines = config_output.splitlines()
+    filtered_lines = []
+    in_section = False
+    section_indent = None
+    
+    # Normalize section name for matching
+    section_lower = section.lower()
+    
+    for line in lines:
+        stripped = line.strip().lower()
+        
+        # Check if this line starts the section
+        if stripped.startswith(section_lower):
+            in_section = True
+            section_indent = len(line) - len(line.lstrip())
+            filtered_lines.append(line)
+        elif in_section:
+            # Check if we've exited the section (lower indent or empty line followed by new section)
+            current_indent = len(line) - len(line.lstrip())
+            if line.strip() and current_indent <= section_indent:
+                # We've moved to a different top-level section
+                in_section = False
+                section_indent = None
+            else:
+                filtered_lines.append(line)
+    
+    return "\n".join(filtered_lines) if filtered_lines else f"# Section '{section}' not found"
+
+
+async def show_config_async(
+    device_name: str,
+    topology_path: Optional[Path],
+    section: Optional[str],
+    output_format: str,
+    timeout: float = 10.0,
+) -> int:
+    """Async implementation of show-config command.
+    
+    Args:
+        device_name: Name of the device to connect to.
+        topology_path: Optional path to topology file.
+        section: Optional section to filter.
+        output_format: Output format (text or json).
+        timeout: Timeout in seconds for command execution.
+        
+    Returns:
+        Exit code:
+            0 - Success
+            1 - General error
+            2 - File not found
+            3 - Parse error
+            5 - Command timeout
+    """
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Find device
+        device = get_device_or_none(topology, device_name, output_format)
+        if device is None:
+            return 1
+        
+        # Execute command
+        config_output = await execute_show_command(device, "display current-configuration", timeout)
+        
+        # Filter by section if specified
+        if section:
+            config_output = filter_config_section(config_output, section)
+        
+        # Output result
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "success",
+                "device": device_name,
+                "section": section,
+                "output": config_output,
+            }))
+        else:
+            # Text output with syntax highlighting
+            console.print(f"[cyan]Configuration for {device_name}:[/cyan]")
+            console.print("-" * 60)
+            syntax = Syntax(config_output, "cisco", theme="monokai", line_numbers=False)
+            console.print(syntax)
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except ValueError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except TopologyParserError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": f"Failed to parse topology file: {e}",
+            }))
+        else:
+            console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except ConnectionError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except asyncio.TimeoutError:
+        error_msg = f"Command timed out after {timeout} seconds"
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": error_msg,
+            }))
+        else:
+            console.print(f"[red]Error: {error_msg}[/red]")
+        return 5
+
+
+@app.command(name="show-config")
+def show_config_command(
+    device: str = typer.Argument(..., help="Device name"),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    section: Optional[str] = typer.Option(
+        None,
+        "--section",
+        "-s",
+        help="Filter section (e.g., 'interface', 'ospf')",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output",
+        "-o",
+        help="Output format: text, json",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds",
+    ),
+) -> None:
+    """Display device running configuration.
+    
+    Connects to the specified device via Telnet, retrieves the
+    current configuration using 'display current-configuration'.
+    
+    Examples:
+        ensp-cli show-config Router1
+        ensp-cli show-config Router1 --section interface
+        ensp-cli show-config Router1 --output json
+        ensp-cli show-config Router1 -t mylab.topo
+    
+    Exit codes:
+        0: Success
+        1: General error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
+    """
+    exit_code = asyncio.run(show_config_async(device, topo_file, section, output, timeout))
+    raise typer.Exit(exit_code)
+
+
+def parse_interface_brief_output(output: str) -> list[dict]:
+    """Parse 'display ip interface brief' output into structured data.
+    
+    Args:
+        output: Raw command output.
+        
+    Returns:
+        List of interface dictionaries.
+    """
+    interfaces = []
+    lines = output.splitlines()
+    
+    # Skip header lines and look for data
+    in_data_section = False
+    for line in lines:
+        stripped = line.strip()
+        
+        # Skip empty lines and headers
+        if not stripped or "Interface" in stripped and "IP Address" in stripped:
+            in_data_section = True
+            continue
+        
+        # Skip separator lines
+        if "----" in stripped or "====" in stripped:
+            continue
+        
+        # Parse interface data
+        if in_data_section and stripped:
+            # Typical format: Interface IP Address Physical Protocol VPN
+            parts = stripped.split()
+            if len(parts) >= 4:
+                interfaces.append({
+                    "interface": parts[0],
+                    "ip_address": parts[1] if parts[1] != "unassigned" else None,
+                    "physical": parts[2],
+                    "protocol": parts[3],
+                    "vpn": parts[4] if len(parts) > 4 else None,
+                })
+    
+    return interfaces
+
+
+async def show_interfaces_async(
+    device_name: str,
+    topology_path: Optional[Path],
+    interface_filter: Optional[str],
+    output_format: str,
+    timeout: float = 10.0,
+) -> int:
+    """Async implementation of show-interfaces command.
+    
+    Args:
+        device_name: Name of the device to connect to.
+        topology_path: Optional path to topology file.
+        interface_filter: Optional specific interface to show.
+        output_format: Output format (text or json).
+        timeout: Timeout in seconds for command execution.
+        
+    Returns:
+        Exit code.
+    """
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Find device
+        device = get_device_or_none(topology, device_name, output_format)
+        if device is None:
+            return 1
+        
+        # Determine command based on filter
+        if interface_filter:
+            command = f"display ip interface {interface_filter}"
+        else:
+            command = "display ip interface brief"
+        
+        # Execute command
+        output = await execute_show_command(device, command, timeout)
+        
+        # Parse interfaces
+        interfaces = parse_interface_brief_output(output)
+        
+        # Filter if specific interface requested
+        if interface_filter and not interface_filter.lower().startswith("display"):
+            interfaces = [i for i in interfaces if interface_filter.lower() in i["interface"].lower()]
+        
+        # Output result
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "success",
+                "device": device_name,
+                "interfaces": interfaces,
+            }))
+        else:
+            # Text output as table
+            console.print(f"[cyan]Interface Status for {device_name}:[/cyan]")
+            console.print("-" * 60)
+            
+            if not interfaces:
+                console.print("[yellow]No interfaces found.[/yellow]")
+            else:
+                table = Table(
+                    show_header=True,
+                    header_style="bold magenta",
+                )
+                table.add_column("Interface", style="cyan")
+                table.add_column("IP Address", style="green")
+                table.add_column("Physical", style="blue")
+                table.add_column("Protocol", style="yellow")
+                
+                for iface in interfaces:
+                    ip_display = iface["ip_address"] if iface["ip_address"] else "unassigned"
+                    physical_style = "green" if iface["physical"] == "up" else "red"
+                    protocol_style = "green" if iface["protocol"] == "up" else "red"
+                    
+                    table.add_row(
+                        iface["interface"],
+                        ip_display,
+                        f"[{physical_style}]{iface['physical']}[/{physical_style}]",
+                        f"[{protocol_style}]{iface['protocol']}[/{protocol_style}]",
+                    )
+                
+                console.print(table)
+                console.print(f"\nTotal: {len(interfaces)} interface(s)")
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except ValueError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except TopologyParserError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": f"Failed to parse topology file: {e}",
+            }))
+        else:
+            console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except ConnectionError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except asyncio.TimeoutError:
+        error_msg = f"Command timed out after {timeout} seconds"
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": error_msg,
+            }))
+        else:
+            console.print(f"[red]Error: {error_msg}[/red]")
+        return 5
+
+
+@app.command(name="show-interfaces")
+def show_interfaces_command(
+    device: str = typer.Argument(..., help="Device name"),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    interface: Optional[str] = typer.Option(
+        None,
+        "--interface",
+        "-i",
+        help="Specific interface to display",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output",
+        "-o",
+        help="Output format: text, json",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds",
+    ),
+) -> None:
+    """Display device interface status.
+    
+    Shows IP interface brief information including IP addresses,
+    physical and protocol states.
+    
+    Examples:
+        ensp-cli show-interfaces Router1
+        ensp-cli show-interfaces Router1 --interface GigabitEthernet0/0/0
+        ensp-cli show-interfaces Router1 --output json
+    
+    Exit codes:
+        0: Success
+        1: General error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
+    """
+    exit_code = asyncio.run(show_interfaces_async(device, topo_file, interface, output, timeout))
+    raise typer.Exit(exit_code)
+
+
+def parse_routing_table_output(output: str) -> list[dict]:
+    """Parse 'display ip routing-table' output into structured data.
+    
+    Args:
+        output: Raw command output.
+        
+    Returns:
+        List of route dictionaries.
+    """
+    routes = []
+    lines = output.splitlines()
+    
+    # Parse routing table data
+    in_data_section = False
+    for line in lines:
+        stripped = line.strip()
+        
+        # Skip header lines
+        if not stripped:
+            continue
+        if "Destination" in stripped and "Mask" in stripped:
+            in_data_section = True
+            continue
+        if "----" in stripped or "====" in stripped:
+            continue
+        if "Route Flags" in stripped or "Routing Tables" in stripped:
+            continue
+        
+        # Parse route data
+        # Format: Destination/Mask Proto Pre Cost Flags NextHop Interface
+        if in_data_section:
+            parts = stripped.split()
+            if len(parts) >= 5:
+                # Try to parse route entry
+                try:
+                    dest_mask = parts[0]
+                    proto = parts[1] if len(parts) > 1 else ""
+                    pre = parts[2] if len(parts) > 2 else ""
+                    cost = parts[3] if len(parts) > 3 else ""
+                    flags = parts[4] if len(parts) > 4 else ""
+                    
+                    # NextHop and Interface might be in different positions
+                    nexthop = ""
+                    iface = ""
+                    if len(parts) > 5:
+                        # Check if parts[5] looks like an IP or interface
+                        if "." in parts[5] or ":" in parts[5]:
+                            nexthop = parts[5]
+                            iface = parts[6] if len(parts) > 6 else ""
+                        else:
+                            iface = parts[5]
+                    
+                    routes.append({
+                        "destination": dest_mask,
+                        "protocol": proto,
+                        "preference": pre,
+                        "cost": cost,
+                        "flags": flags,
+                        "nexthop": nexthop,
+                        "interface": iface,
+                    })
+                except IndexError:
+                    continue
+    
+    return routes
+
+
+async def show_routes_async(
+    device_name: str,
+    topology_path: Optional[Path],
+    protocol_filter: Optional[str],
+    output_format: str,
+    timeout: float = 10.0,
+) -> int:
+    """Async implementation of show-routes command.
+    
+    Args:
+        device_name: Name of the device to connect to.
+        topology_path: Optional path to topology file.
+        protocol_filter: Optional protocol to filter by.
+        output_format: Output format (text or json).
+        timeout: Timeout in seconds for command execution.
+        
+    Returns:
+        Exit code.
+    """
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Find device
+        device = get_device_or_none(topology, device_name, output_format)
+        if device is None:
+            return 1
+        
+        # Build command with optional protocol filter
+        if protocol_filter:
+            command = f"display ip routing-table protocol {protocol_filter}"
+        else:
+            command = "display ip routing-table"
+        
+        # Execute command
+        output = await execute_show_command(device, command, timeout)
+        
+        # Parse routes
+        routes = parse_routing_table_output(output)
+        
+        # Output result
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "success",
+                "device": device_name,
+                "protocol_filter": protocol_filter,
+                "routes": routes,
+            }))
+        else:
+            # Text output as table
+            title = f"Routing Table for {device_name}"
+            if protocol_filter:
+                title += f" (Protocol: {protocol_filter})"
+            console.print(f"[cyan]{title}:[/cyan]")
+            console.print("-" * 80)
+            
+            if not routes:
+                console.print("[yellow]No routes found.[/yellow]")
+            else:
+                table = Table(
+                    show_header=True,
+                    header_style="bold magenta",
+                )
+                table.add_column("Destination", style="cyan")
+                table.add_column("Protocol", style="green")
+                table.add_column("Pre", justify="right", style="blue")
+                table.add_column("Cost", justify="right", style="yellow")
+                table.add_column("NextHop", style="magenta")
+                table.add_column("Interface", style="white")
+                
+                for route in routes:
+                    table.add_row(
+                        route["destination"],
+                        route["protocol"],
+                        route["preference"],
+                        route["cost"],
+                        route["nexthop"] or "-",
+                        route["interface"] or "-",
+                    )
+                
+                console.print(table)
+                console.print(f"\nTotal: {len(routes)} route(s)")
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except ValueError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except TopologyParserError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": f"Failed to parse topology file: {e}",
+            }))
+        else:
+            console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except ConnectionError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": str(e),
+            }))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except asyncio.TimeoutError:
+        error_msg = f"Command timed out after {timeout} seconds"
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": error_msg,
+            }))
+        else:
+            console.print(f"[red]Error: {error_msg}[/red]")
+        return 5
+
+
+@app.command(name="show-routes")
+def show_routes_command(
+    device: str = typer.Argument(..., help="Device name"),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    protocol: Optional[str] = typer.Option(
+        None,
+        "--protocol",
+        "-p",
+        help="Filter by protocol (static, ospf, bgp, direct)",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output",
+        "-o",
+        help="Output format: text, json",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds",
+    ),
+) -> None:
+    """Display device routing table.
+    
+    Shows IP routing table information including destinations,
+    protocols, preferences, costs, and next hops.
+    
+    Examples:
+        ensp-cli show-routes Router1
+        ensp-cli show-routes Router1 --protocol ospf
+        ensp-cli show-routes Router1 --output json
+    
+    Exit codes:
+        0: Success
+        1: General error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
+    """
+    exit_code = asyncio.run(show_routes_async(device, topo_file, protocol, output, timeout))
+    raise typer.Exit(exit_code)
