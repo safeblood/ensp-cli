@@ -1,5 +1,7 @@
 """Main CLI entry point for eNSP CLI."""
 
+import json
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +12,12 @@ from rich.table import Table
 from ensp_cli import __version__
 from ensp_cli.models import Topology
 from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
+
+
+class OutputFormat(str, Enum):
+    """Output format options."""
+    TABLE = "table"
+    JSON = "json"
 
 # Create the main Typer app
 app = typer.Typer(
@@ -54,34 +62,48 @@ def main(
     pass
 
 
-@app.command()
-def list(
-    topo_file: Path = typer.Argument(
-        ...,
-        help="Path to the .topo file to parse",
-        exists=True,
-        readable=True,
-        dir_okay=False,
-        resolve_path=True,
-    ),
-) -> None:
-    """List devices in a topology file.
-    
-    Displays a table of all devices in the topology with their
-    name, type, model, and console port information.
-    
-    Example:
-        ensp-cli list topology.topo
-    """
-    try:
-        parser = TopologyParser()
-        topology = parser.parse_file(topo_file)
+def _output_json(topology: Topology) -> None:
+    """Output topology as JSON."""
+    data = {
+        "name": topology.name,
+        "devices": [device.model_dump() for device in topology.devices],
+        "connections": [conn.model_dump() for conn in topology.connections],
+    }
+    console.print(json.dumps(data, indent=2))
+
+
+def _output_table(topology: Topology, show_connections: bool = False) -> None:
+    """Output topology as table."""
+    if show_connections:
+        if not topology.connections:
+            console.print("[yellow]No connections found in topology.[/yellow]")
+            return
         
+        table = Table(
+            title=f"Connections in '{topology.name}'",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("From Device", style="cyan")
+        table.add_column("From Port", style="green")
+        table.add_column("To Device", style="blue")
+        table.add_column("To Port", style="yellow")
+        
+        for conn in topology.connections:
+            table.add_row(
+                conn.from_device,
+                conn.from_port,
+                conn.to_device,
+                conn.to_port,
+            )
+        
+        console.print(table)
+        console.print(f"\nTotal: {topology.connection_count} connection(s)")
+    else:
         if not topology.devices:
             console.print("[yellow]No devices found in topology.[/yellow]")
-            raise typer.Exit(0)
+            return
         
-        # Create table
         table = Table(
             title=f"Devices in '{topology.name}'",
             show_header=True,
@@ -102,6 +124,49 @@ def list(
         
         console.print(table)
         console.print(f"\nTotal: {topology.device_count} device(s)")
+
+
+@app.command()
+def list(
+    topo_file: Path = typer.Argument(
+        ...,
+        help="Path to the .topo file to parse",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    output: OutputFormat = typer.Option(
+        OutputFormat.TABLE,
+        "--output",
+        "-o",
+        help="Output format (table or json)",
+    ),
+    show_connections: bool = typer.Option(
+        False,
+        "--show-connections",
+        "-c",
+        help="Show connections instead of devices",
+    ),
+) -> None:
+    """List devices in a topology file.
+    
+    Displays a table of all devices in the topology with their
+    name, type, model, and console port information.
+    
+    Examples:
+        ensp-cli list topology.topo
+        ensp-cli list topology.topo --output json
+        ensp-cli list topology.topo --show-connections
+    """
+    try:
+        parser = TopologyParser()
+        topology = parser.parse_file(topo_file)
+        
+        if output == OutputFormat.JSON:
+            _output_json(topology)
+        else:
+            _output_table(topology, show_connections=show_connections)
         
     except FileNotFoundError:
         console.print(f"[red]Error: File not found: {topo_file}[/red]")
