@@ -163,22 +163,28 @@ class InteractiveSession:
             return await self._read_char_unix()
     
     async def _read_char_windows(self) -> str:
-        """Read a character on Windows using msvcrt.
+        """Read a character on Windows using sys.stdin.buffer.
+        
+        Uses sys.stdin.buffer.read() which works better in Windows Terminal
+        and PowerShell compared to msvcrt.getch().
         
         Returns:
             Single character read from stdin.
         """
-        import msvcrt
+        import sys
         
         while self._running:
-            if msvcrt.kbhit():
-                char = msvcrt.getch()
-                # Decode byte to string
-                try:
-                    return char.decode('utf-8')
-                except UnicodeDecodeError:
-                    # Handle special keys
-                    return char.decode('latin-1')
+            try:
+                # Use asyncio.to_thread for non-blocking read
+                char = await asyncio.to_thread(sys.stdin.buffer.read, 1)
+                if char:
+                    try:
+                        return char.decode('utf-8')
+                    except UnicodeDecodeError:
+                        return char.decode('latin-1')
+            except (OSError, ValueError):
+                # stdin might be closed or not available
+                await asyncio.sleep(0.1)
             await asyncio.sleep(0.01)
         
         return ''
@@ -214,8 +220,4 @@ class InteractiveSession:
     
     def _print_banner(self) -> None:
         """Print session start banner with connection info."""
-        print(f"\n{'='*50}")
-        print(f"Connected to {self.device_name} at {self.client.host}:{self.client.port}")
-        print(f"{'='*50}")
-        print("Press Ctrl+] or type 'exit' to exit")
-        print()
+        print("\nPress Ctrl+] or type 'exit' to exit\n")
