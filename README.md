@@ -25,9 +25,23 @@ pytest
 ## Usage
 
 ```bash
-# View topology information
-ensp-cli topology show <file.topo>
+# List devices in a topology file
+ensp-cli list topology.topo
 
-# Connect to devices
-ensp-cli device connect <device-name>
+# Connect to a device interactively
+ensp-cli console Router1
+
+# Execute a single command on a device
+ensp-cli exec Router1 "display version"
 ```
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error (device not found, connection failed) |
+| 2 | File not found |
+| 3 | Invalid XML / Parse error |
+| 4 | Permission denied |
+| 5 | Command timeout |
