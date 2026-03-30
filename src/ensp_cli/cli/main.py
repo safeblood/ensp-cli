@@ -27,6 +27,23 @@ app = typer.Typer(
     name="ensp-cli",
     help="CLI tool for managing eNSP topology files and device connections",
     no_args_is_help=True,
+    rich_markup_mode="rich",
+    epilog="""
+[bold]Examples:[/bold]
+  ensp-cli list topology.topo
+  ensp-cli console Router1
+  ensp-cli exec Router1 "display version"
+
+[bold]Exit Codes:[/bold]
+  0 - Success
+  1 - General error
+  2 - File not found
+  3 - Invalid XML / Parse error
+  4 - Permission denied
+  5 - Command timeout
+
+For more information, visit: https://github.com/user/ensp-cli
+"""
 )
 
 console = Console()
