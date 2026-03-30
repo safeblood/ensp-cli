@@ -53,6 +53,17 @@ class InteractiveSession:
         # Display session banner
         self._print_banner()
         
+        # Send a newline to trigger the device to show the prompt
+        # and wait a moment for the response
+        await self.client.write("\r\n")
+        await asyncio.sleep(0.5)
+        
+        # Read and display any initial output (including the prompt)
+        initial_output = await self.client.read_available()
+        if initial_output:
+            sys.stdout.write(initial_output)
+            sys.stdout.flush()
+        
         # Start input and output readers concurrently
         self._input_task = asyncio.create_task(self._input_reader())
         self._output_task = asyncio.create_task(self._output_reader())
