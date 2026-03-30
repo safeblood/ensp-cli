@@ -89,6 +89,15 @@ async def _execute_command_on_client(
                 await asyncio.sleep(0.2)
                 continue
             
+            # Check for confirmation prompts (y/n) and auto-confirm
+            if "(y/n)" in all_output.lower() or "Are you sure" in all_output:
+                # Wait a moment for the full prompt to arrive
+                await asyncio.sleep(0.3)
+                # Send 'y' to confirm
+                await client.write_line("y")
+                await asyncio.sleep(0.3)
+                continue
+            
             # Check if we have the prompt (look at last few lines only)
             lines = all_output.replace('\r\n', '\n').split('\n')
             recent_lines = [line for line in lines[-3:] if line.strip()]
