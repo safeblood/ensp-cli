@@ -81,26 +81,33 @@
 - ✅ Exit codes documented
 - ✅ Phase 4 planned: Device Operations
 - ✅ **Code committed to Gitee**: https://gitee.com/safegeek/ensp-cli
+- ✅ **Phase 4 redefined**: Changed from topology modification to read-only helpers (config view/export/diff)
 
 ---
 
 ## Next Steps
 
-### Phase 4: Device Operations (Planned) 🔵
+### Phase 4: Device Operations (Read-Only Helpers) 🔵 REDEFINED
+
+**Redefinition Reason:** Topology modification (add/remove devices, connections) was deemed infeasible because eNSP does not watch .topo file changes - modifications require manual GUI intervention.
 
 **New Commands:**
-- `ensp-cli add-device <name> --type <type>` - Add new device
-- `ensp-cli remove-device <name>` - Remove device
-- `ensp-cli connect <dev1> <dev2> --port1 <p1> --port2 <p2>` - Connect devices
-- `ensp-cli disconnect <dev1> <dev2>` - Disconnect devices
+- `ensp-cli show-config <device>` - View device running configuration
+- `ensp-cli show-interfaces <device>` - View interface status
+- `ensp-cli show-routes <device>` - View routing table
+- `ensp-cli export-config <device> -o <file>` - Export configuration
+- `ensp-cli export-all <directory>` - Export all device configs
+- `ensp-cli diff-config <dev1> <dev2>` - Compare configurations
+- `ensp-cli audit-configs` - Find configuration inconsistencies
 
 **Features:**
-- Add/remove devices from topology
-- Create/delete connections
-- Save changes to .topo file
-- Automatic backup before modification
+- Configuration viewing with syntax highlighting
+- Export to multiple formats (txt, json, md)
+- Configuration comparison with diff output
+- Topology-wide configuration audit
+- JSON output for automation
 
-**Status:** Ready for planning
+**Status:** Ready for execution
 
 ### Future Phases (v1.2+)
 - **Phase 5**: Multi-Device Operations (broadcast commands, batch execution)

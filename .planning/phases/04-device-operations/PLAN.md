@@ -1,68 +1,83 @@
-# Phase 4: Device Operations
+# Phase 4: Device Operations (Read-Only Helpers)
 
-**Goal:** Enable topology modification - add/remove devices and manage connections
+**Goal:** Provide read-only helper commands for device configuration viewing, export, and comparison
+
+**Note:** Phase 4 was redefined from "topology modification" (add/remove devices, connections) to "read-only helpers" because:
+- eNSP does not watch .topo file changes
+- Modified topology requires manual intervention in eNSP GUI
+- Read-only operations are immediately useful without GUI interaction
 
 **Requirements Mapped:**
 | Requirement | Description |
 |-------------|-------------|
-| TOPO-03 | Add new devices to topology |
-| TOPO-04 | Remove devices from topology |
-| TOPO-05 | Create connections between devices |
-| TOPO-06 | Delete connections between devices |
+| TOPO-03 | Add new devices to topology → CHANGED to: View device configuration |
+| TOPO-04 | Remove devices from topology → CHANGED to: Export device configuration |
+| TOPO-05 | Create connections between devices → CHANGED to: Compare configurations |
+| TOPO-06 | Delete connections between devices → CHANGED to: Audit configuration consistency |
 
 **Success Criteria:**
-1. User can add a new device with `ensp-cli add-device <name> --type <type>`
-2. User can remove a device with `ensp-cli remove-device <name>`
-3. User can connect two devices with `ensp-cli connect <dev1> <dev2> --port1 <p1> --port2 <p2>`
-4. User can disconnect devices with `ensp-cli disconnect <dev1> <dev2>`
-5. Changes are saved back to the .topo file
-6. Visual output reflects changes immediately
+1. User can view device configuration with `ensp-cli show-config <device>`
+2. User can export config with `ensp-cli export-config <device> -o <file>`
+3. User can compare configs with `ensp-cli diff-config <dev1> <dev2>`
+4. User can audit all configs with `ensp-cli audit-configs`
+5. JSON output supported for automation/integration
+6. All commands include tests
 
 ---
 
 ## Sub-Plans
 
-### 04-01: Add/Remove Device Commands
-**Goal:** Implement device addition and removal
+### 04-01: Show Device Configuration
+**Goal:** Implement configuration viewing commands
 
-**Tasks:**
-1. Create `add-device` command with device type selection
-2. Create `remove-device` command with confirmation
-3. Implement topology modification logic
-4. Add save functionality to write back to .topo file
-
-**must_haves:**
-- [ ] `ensp-cli add-device` creates new device with unique name
-- [ ] `ensp-cli remove-device` removes device and its connections
-- [ ] Changes persist to .topo file
-
-### 04-02: Connect/Disconnect Commands  
-**Goal:** Implement connection management
-
-**Tasks:**
-1. Create `connect` command to link two devices
-2. Create `disconnect` command to remove links
-3. Validate interface availability
-4. Update connection visualization
+**Commands:**
+- `ensp-cli show-config <device>` - Display running configuration
+- `ensp-cli show-interfaces <device>` - Display interface status
+- `ensp-cli show-routes <device>` - Display routing table
 
 **must_haves:**
-- [ ] `ensp-cli connect` creates valid connection
-- [ ] `ensp-cli disconnect` removes connection
-- [ ] Interface conflict detection
+- [ ] `show-config` displays running config with optional section filter
+- [ ] `show-interfaces` shows interface status table
+- [ ] `show-routes` displays routing table with protocol filter
+- [ ] JSON output supported
 
-### 04-03: Topology Save/Backup
-**Goal:** Ensure changes are persisted safely
+### 04-02: Export Configuration
+**Goal:** Implement configuration export to files
 
-**Tasks:**
-1. Implement topology serialization to XML
-2. Add backup before modification
-3. Add rollback on error
-4. Validate saved topology
+**Commands:**
+- `ensp-cli export-config <device> -o <file>` - Export single device
+- `ensp-cli export-all <directory>` - Export all devices
+
+**Features:**
+- Multiple formats: txt, json, markdown
+- Metadata included (timestamp, topology, device info)
+- Parallel fetching for export-all
 
 **must_haves:**
-- [ ] Changes saved to .topo file
-- [ ] Backup created before modification
-- [ ] Rollback on save failure
+- [ ] Single device export works
+- [ ] Batch export works
+- [ ] All formats generate valid output
+- [ ] Metadata included
+
+### 04-03: Compare Configurations
+**Goal:** Implement configuration comparison
+
+**Commands:**
+- `ensp-cli diff-config <dev1> <dev2>` - Compare two devices
+- `ensp-cli diff-file <device> <file>` - Compare with baseline
+- `ensp-cli audit-configs` - Find inconsistencies across topology
+
+**Features:**
+- Section-specific comparison
+- Smart ignore (timestamps, uptime)
+- Similarity scoring
+- Color-coded diff output
+
+**must_haves:**
+- [ ] Device-to-device comparison works
+- [ ] Device-to-file comparison works
+- [ ] Audit finds configuration drift
+- [ ] Smart ignore filters volatile fields
 
 ---
 
@@ -70,19 +85,21 @@
 
 | Wave | Plans | Description |
 |------|-------|-------------|
-| 1 | 04-01, 04-02, 04-03 | All sub-plans can execute in parallel (autonomous) |
+| 1 | 04-01 | Config viewing (foundational) |
+| 2 | 04-02 | Config export (depends on 04-01) |
+| 3 | 04-03 | Config diff (depends on 04-01, 04-02) |
 
 ## Plan Files
 
-- **04-01-add-remove-device-PLAN.md** - Add/remove device commands
-- **04-02-connect-disconnect-PLAN.md** - Connect/disconnect commands
-- **04-03-topology-save-PLAN.md** - Topology save/backup
+- **04-01-show-config-PLAN.md** - Configuration viewing commands
+- **04-02-export-config-PLAN.md** - Configuration export
+- **04-03-diff-config-PLAN.md** - Configuration comparison
 
 ## Status
 
-**Phase 4 Status:** 🔵 Planned  
+**Phase 4 Status:** 🔵 Planned (Redefined)  
 **Dependencies:** Phase 1-3 (complete)  
 **Ready for:** Execution
 
-*Created: 2026-03-30*
-*Updated: 2026-03-30 with detailed plans*
+*Redefined: 2026-03-30*  
+*Reason: Topology modification not feasible due to eNSP limitations*
