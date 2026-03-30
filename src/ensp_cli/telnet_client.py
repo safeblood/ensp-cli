@@ -154,8 +154,11 @@ class TelnetClient:
                 )
                 if not data:
                     break
-                decoded = data.decode("ascii", errors="replace")
-                result += decoded
+                # telnetlib3 returns strings, not bytes
+                if isinstance(data, bytes):
+                    result += data.decode("ascii", errors="replace")
+                else:
+                    result += data
         except asyncio.TimeoutError:
             pass
         
@@ -173,8 +176,11 @@ class TelnetClient:
         if not self.is_connected:
             raise ConnectionError("Not connected to device")
         
-        encoded = data.encode("ascii", errors="replace")
-        self._writer.write(encoded)  # type: ignore
+        if not data:
+            return
+        
+        # telnetlib3 handles encoding, pass string directly
+        self._writer.write(data)  # type: ignore
         await self._writer.drain()  # type: ignore
     
     async def write_line(self, data: str) -> None:
