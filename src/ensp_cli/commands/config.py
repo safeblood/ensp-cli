@@ -994,3 +994,689 @@ def export_all_command(
         output_dir, topo_file, fmt, timeout, parallel
     ))
     raise typer.Exit(exit_code)
+
+
+# =============================================================================
+# Import Configuration Commands
+# =============================================================================
+
+async def import_config_async(
+    device_name: str,
+    config_file: Path,
+    topology_path: Optional[Path],
+    dry_run: bool,
+    sections: Optional[list[str]],
+    force: bool,
+    variables: dict[str, str],
+    output_format: str,
+    timeout: float,
+) -> int:
+    """Async implementation of import-config command.
+    
+    Args:
+        device_name: Name of the device to import to.
+        config_file: Path to configuration file.
+        topology_path: Optional path to topology file.
+        dry_run: Preview without executing.
+        sections: Optional sections to import.
+        force: Skip confirmation for dangerous commands.
+        variables: Template variables for substitution.
+        output_format: Output format (text or json).
+        timeout: Command timeout in seconds.
+    
+    Returns:
+        Exit code.
+    """
+    importer = ConfigImporter()
+    
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Find device
+        device = get_device_or_none(topology, device_name, output_format)
+        if device is None:
+            return 1
+        
+        # Parse config file
+        try:
+            commands = importer.parse_config_file(config_file, sections)
+        except ConfigImportError as e:
+            if output_format.lower() == "json":
+                print(json.dumps({"status": "error", "error": str(e)}))
+            else:
+                console.print(f"[red]Error: {e}[/red]")
+            return 1
+        
+        if not commands:
+            if output_format.lower() == "json":
+                print(json.dumps({
+                    "status": "error",
+                    "error": "No commands found in configuration file",
+                }))
+            else:
+                console.print("[yellow]Warning: No commands found in configuration file[/yellow]")
+            return 1
+        
+        # Substitute variables
+        if variables:
+            try:
+                commands = importer.substitute_variables(commands, variables)
+            except ConfigImportError as e:
+                if output_format.lower() == "json":
+                    print(json.dumps({"status": "error", "error": str(e)}))
+                else:
+                    console.print(f"[red]Error: {e}[/red]")
+                return 1
+        
+        # Validate commands
+        is_valid, warnings = importer.validate_commands(commands)
+        
+        if not is_valid and not force:
+            if output_format.lower() == "json":
+                print(json.dumps({
+                    "status": "error",
+                    "error": "Dangerous commands detected",
+                    "warnings": warnings,
+                }))
+            else:
+                console.print("[yellow]Warning: Dangerous commands detected:[/yellow]")
+                for warning in warnings:
+                    console.print(f"  - {warning}")
+                console.print("\nUse --force to proceed anyway.")
+            return 1
+        
+        if warnings and output_format.lower() != "json":
+            console.print("[yellow]Warning: The following dangerous commands were detected:[/yellow]")
+            for warning in warnings:
+                console.print(f"  - {warning}")
+        
+        # Dry run mode
+        if dry_run:
+            if output_format.lower() == "json":
+                print(json.dumps({
+                    "status": "dry_run",
+                    "device": device_name,
+                    "command_count": len(commands),
+                    "commands": commands,
+                    "warnings": warnings,
+                }))
+            else:
+                console.print(f"[cyan]Dry run - Commands that would be executed on {device_name}:[/cyan]")
+                console.print("-" * 60)
+                for i, cmd in enumerate(commands, 1):
+                    console.print(f"  {i}. {cmd}")
+                console.print("-" * 60)
+                console.print(f"Total: {len(commands)} command(s)")
+            return 0
+        
+        # Confirm execution if not forced
+        if not force and output_format.lower() != "json":
+            console.print(f"[cyan]About to execute {len(commands)} command(s) on {device_name}:[/cyan]")
+            console.print("-" * 60)
+            for i, cmd in enumerate(commands[:5], 1):
+                console.print(f"  {i}. {cmd}")
+            if len(commands) > 5:
+                console.print(f"  ... and {len(commands) - 5} more")
+            console.print("-" * 60)
+            
+            # Simple confirmation (in a real app, use typer.confirm)
+            confirm = input("Proceed with import? [y/N]: ")
+            if confirm.lower() not in ("y", "yes"):
+                console.print("[yellow]Import cancelled.[/yellow]")
+                return 0
+        
+        # Execute import
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            progress.add_task(f"Importing configuration to {device_name}...", total=None)
+            result = await importer.import_to_device(
+                device=device,
+                commands=commands,
+                dry_run=False,
+                timeout=timeout,
+                stop_on_error=True,
+                save_config=True,
+            )
+        
+        # Output result
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "success" if result.success else "partial",
+                "device": device_name,
+                "commands_executed": result.commands_executed,
+                "commands_failed": result.commands_failed,
+                "failed_commands": result.failed_commands,
+                "rollback_commands": result.rollback_commands,
+            }))
+        else:
+            if result.success:
+                console.print(f"[green]Successfully imported configuration to {device_name}[/green]")
+                console.print(f"Commands executed: {result.commands_executed}")
+            else:
+                console.print(f"[red]Import partially failed on {device_name}[/red]")
+                console.print(f"Commands executed: {result.commands_executed}")
+                console.print(f"Commands failed: {result.commands_failed}")
+                
+                if result.failed_commands:
+                    console.print("\n[yellow]Failed commands:[/yellow]")
+                    for fc in result.failed_commands:
+                        console.print(f"  - {fc['command']}: {fc['error']}")
+                
+                if result.rollback_commands:
+                    console.print("\n[cyan]Rollback commands (to undo changes):[/cyan]")
+                    for cmd in result.rollback_commands:
+                        console.print(f"  {cmd}")
+        
+        return 0 if result.success else 1
+        
+    except FileNotFoundError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except ValueError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except TopologyParserError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": f"Failed to parse topology file: {e}"}))
+        else:
+            console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+    except ConnectionError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 1
+    except asyncio.TimeoutError:
+        error_msg = f"Command timed out after {timeout} seconds"
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": error_msg}))
+        else:
+            console.print(f"[red]Error: {error_msg}[/red]")
+        return 5
+
+
+@app.command(name="import-config")
+def import_config_command(
+    device: str = typer.Argument(..., help="Device name"),
+    config_file: Path = typer.Argument(
+        ...,
+        help="Configuration file to import",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-d",
+        help="Preview commands without executing",
+    ),
+    section: Optional[list[str]] = typer.Option(
+        None,
+        "--section",
+        "-s",
+        help="Import specific section only (can be specified multiple times)",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Skip confirmation for dangerous commands",
+    ),
+    var: Optional[list[str]] = typer.Option(
+        None,
+        "--var",
+        help="Template variable (format: name=value, can be specified multiple times)",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output",
+        "-o",
+        help="Output format: text, json",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds",
+    ),
+) -> None:
+    """Import configuration from file to device.
+    
+    Connects to the specified device and applies configuration commands
+    from the provided file. Supports template variables and section filtering.
+    
+    Examples:
+        ensp-cli import-config Router1 config.txt
+        ensp-cli import-config Router1 config.txt --dry-run
+        ensp-cli import-config Router1 config.txt --section interface
+        ensp-cli import-config Router1 template.txt --var hostname=R1 --var ip=192.168.1.1
+        ensp-cli import-config Router1 config.txt --force
+    
+    Exit codes:
+        0: Success
+        1: General error or device not found
+        2: Topology file not found
+        3: Parse error
+        5: Command timeout
+    """
+    # Parse template variables
+    variables = {}
+    if var:
+        for v in var:
+            if "=" in v:
+                name, value = v.split("=", 1)
+                variables[name.strip()] = value.strip()
+            else:
+                console.print(f"[red]Error: Invalid variable format '{v}'. Use 'name=value'.[/red]")
+                raise typer.Exit(1)
+    
+    exit_code = asyncio.run(import_config_async(
+        device_name=device,
+        config_file=config_file,
+        topology_path=topo_file,
+        dry_run=dry_run,
+        sections=section,
+        force=force,
+        variables=variables,
+        output_format=output,
+        timeout=timeout,
+    ))
+    raise typer.Exit(exit_code)
+
+
+async def import_all_async(
+    config_dir: Path,
+    topology_path: Optional[Path],
+    dry_run: bool,
+    parallel: bool,
+    continue_on_error: bool,
+    output_format: str,
+    timeout: float,
+) -> int:
+    """Async implementation of import-all command.
+    
+    Args:
+        config_dir: Directory containing config files.
+        topology_path: Optional path to topology file.
+        dry_run: Preview without executing.
+        parallel: Import to devices in parallel.
+        continue_on_error: Continue if one device fails.
+        output_format: Output format (text or json).
+        timeout: Command timeout in seconds.
+    
+    Returns:
+        Exit code.
+    """
+    importer = ConfigImporter()
+    
+    try:
+        # Find and parse topology
+        topo_file = find_topology_file(topology_path)
+        topology = parse_topology(topo_file)
+        
+        # Scan for config files
+        config_files = {}
+        for cfg_file in config_dir.glob("*.cfg"):
+            device_name = cfg_file.stem  # filename without extension
+            config_files[device_name] = cfg_file
+        
+        for cfg_file in config_dir.glob("*.txt"):
+            device_name = cfg_file.stem
+            if device_name not in config_files:
+                config_files[device_name] = cfg_file
+        
+        if not config_files:
+            if output_format.lower() == "json":
+                print(json.dumps({
+                    "status": "error",
+                    "error": f"No config files found in {config_dir}",
+                }))
+            else:
+                console.print(f"[red]Error: No config files found in {config_dir}[/red]")
+            return 1
+        
+        # Match with devices in topology
+        matched_devices = []
+        unmatched_configs = []
+        
+        for device_name, cfg_file in config_files.items():
+            device = topology.get_device(device_name)
+            if device:
+                matched_devices.append((device, cfg_file))
+            else:
+                unmatched_configs.append(device_name)
+        
+        if output_format.lower() != "json":
+            console.print(f"[cyan]Found {len(config_files)} config file(s):[/cyan]")
+            console.print(f"  Matched with topology: {len(matched_devices)}")
+            console.print(f"  Unmatched: {len(unmatched_configs)}")
+            
+            if unmatched_configs:
+                console.print(f"  [yellow]Unmatched configs: {', '.join(unmatched_configs)}[/yellow]")
+        
+        if not matched_devices:
+            if output_format.lower() == "json":
+                print(json.dumps({
+                    "status": "error",
+                    "error": "No config files matched devices in topology",
+                }))
+            else:
+                console.print("[red]Error: No config files matched devices in topology[/red]")
+            return 1
+        
+        # Dry run mode
+        if dry_run:
+            results = []
+            for device, cfg_file in matched_devices:
+                try:
+                    commands = importer.parse_config_file(cfg_file)
+                    results.append({
+                        "device": device.name,
+                        "config_file": str(cfg_file),
+                        "command_count": len(commands),
+                        "commands": commands,
+                    })
+                except ConfigImportError as e:
+                    results.append({
+                        "device": device.name,
+                        "config_file": str(cfg_file),
+                        "error": str(e),
+                    })
+            
+            if output_format.lower() == "json":
+                print(json.dumps({
+                    "status": "dry_run",
+                    "results": results,
+                }))
+            else:
+                console.print("[cyan]Dry run - Import preview:[/cyan]")
+                for r in results:
+                    if "error" in r:
+                        console.print(f"\n[red]{r['device']}: Error - {r['error']}[/red]")
+                    else:
+                        console.print(f"\n[cyan]{r['device']} ({r['config_file']}):[/cyan]")
+                        console.print(f"  Commands: {r['command_count']}")
+                        for i, cmd in enumerate(r['commands'][:3], 1):
+                            console.print(f"    {i}. {cmd}")
+                        if r['command_count'] > 3:
+                            console.print(f"    ... and {r['command_count'] - 3} more")
+            return 0
+        
+        # Import to devices
+        results = []
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            
+            if parallel:
+                # Import in parallel using asyncio.gather
+                import_tasks = []
+                for device, cfg_file in matched_devices:
+                    task = progress.add_task(f"Importing to {device.name}...", total=None)
+                    import_tasks.append(
+                        _import_single_device(
+                            importer, device, cfg_file, timeout, task, progress
+                        )
+                    )
+                
+                parallel_results = await asyncio.gather(
+                    *import_tasks, 
+                    return_exceptions=True
+                )
+                
+                for (device, _), result in zip(matched_devices, parallel_results):
+                    if isinstance(result, Exception):
+                        results.append(ImportResult(
+                            success=False,
+                            device=device.name,
+                            commands_executed=0,
+                            commands_failed=0,
+                            error_message=str(result),
+                        ))
+                    else:
+                        results.append(result)
+            else:
+                # Import sequentially
+                for device, cfg_file in matched_devices:
+                    task = progress.add_task(f"Importing to {device.name}...", total=None)
+                    
+                    try:
+                        commands = importer.parse_config_file(cfg_file)
+                        result = await importer.import_to_device(
+                            device=device,
+                            commands=commands,
+                            dry_run=False,
+                            timeout=timeout,
+                            stop_on_error=not continue_on_error,
+                            save_config=True,
+                        )
+                        results.append(result)
+                        progress.update(task, description=f"[green]✓ {device.name}[/green]")
+                    except Exception as e:
+                        results.append(ImportResult(
+                            success=False,
+                            device=device.name,
+                            commands_executed=0,
+                            commands_failed=0,
+                            error_message=str(e),
+                        ))
+                        progress.update(task, description=f"[red]✗ {device.name}[/red]")
+                        
+                        if not continue_on_error:
+                            break
+        
+        # Generate summary
+        successful = [r for r in results if r.success]
+        failed = [r for r in results if not r.success]
+        
+        if output_format.lower() == "json":
+            print(json.dumps({
+                "status": "success" if not failed else "partial",
+                "summary": {
+                    "total": len(results),
+                    "successful": len(successful),
+                    "failed": len(failed),
+                },
+                "results": [
+                    {
+                        "device": r.device,
+                        "success": r.success,
+                        "commands_executed": r.commands_executed,
+                        "commands_failed": r.commands_failed,
+                        "error": r.error_message,
+                    }
+                    for r in results
+                ],
+            }))
+        else:
+            console.print("\n" + "=" * 60)
+            console.print("[bold cyan]Import Summary[/bold cyan]")
+            console.print("=" * 60)
+            
+            # Success table
+            if successful:
+                success_table = Table(
+                    title="[green]Successful Imports[/green]",
+                    show_header=True,
+                    header_style="bold green",
+                )
+                success_table.add_column("Device", style="cyan")
+                success_table.add_column("Commands", justify="right")
+                
+                for r in successful:
+                    success_table.add_row(r.device, str(r.commands_executed))
+                
+                console.print(success_table)
+            
+            # Failure table
+            if failed:
+                failure_table = Table(
+                    title="[red]Failed Imports[/red]",
+                    show_header=True,
+                    header_style="bold red",
+                )
+                failure_table.add_column("Device", style="cyan")
+                failure_table.add_column("Error", style="red")
+                
+                for r in failed:
+                    error = r.error_message or "Unknown error"
+                    if len(error) > 50:
+                        error = error[:47] + "..."
+                    failure_table.add_row(r.device, error)
+                
+                console.print(failure_table)
+            
+            console.print(f"\nTotal: {len(results)} | Success: {len(successful)} | Failed: {len(failed)}")
+        
+        return 0 if not failed else 1
+        
+    except FileNotFoundError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": str(e)}))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
+        return 2
+    except TopologyParserError as e:
+        if output_format.lower() == "json":
+            print(json.dumps({"status": "error", "error": f"Failed to parse topology file: {e}"}))
+        else:
+            console.print(f"[red]Error: Failed to parse topology file: {e}[/red]")
+        return 3
+
+
+async def _import_single_device(
+    importer: ConfigImporter,
+    device: Device,
+    cfg_file: Path,
+    timeout: float,
+    task_id,
+    progress,
+) -> ImportResult:
+    """Helper to import config to a single device."""
+    try:
+        commands = importer.parse_config_file(cfg_file)
+        result = await importer.import_to_device(
+            device=device,
+            commands=commands,
+            dry_run=False,
+            timeout=timeout,
+            stop_on_error=True,
+            save_config=True,
+        )
+        progress.update(task_id, description=f"[green]✓ {device.name}[/green]")
+        return result
+    except Exception as e:
+        progress.update(task_id, description=f"[red]✗ {device.name}[/red]")
+        return ImportResult(
+            success=False,
+            device=device.name,
+            commands_executed=0,
+            commands_failed=0,
+            error_message=str(e),
+        )
+
+
+@app.command(name="import-all")
+def import_all_command(
+    config_dir: Path = typer.Argument(
+        ...,
+        help="Directory with config files (named {device}.cfg or {device}.txt)",
+        exists=True,
+        readable=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    topo_file: Optional[Path] = typer.Option(
+        None,
+        "--topology",
+        "-t",
+        help="Path to topology file",
+        exists=True,
+        readable=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-d",
+        help="Preview commands without executing",
+    ),
+    parallel: bool = typer.Option(
+        False,
+        "--parallel",
+        "-p",
+        help="Import to devices in parallel",
+    ),
+    continue_on_error: bool = typer.Option(
+        True,
+        "--continue-on-error/--stop-on-error",
+        help="Continue if one device fails",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output",
+        "-o",
+        help="Output format: text, json",
+    ),
+    timeout: float = typer.Option(
+        10.0,
+        "--timeout",
+        help="Command timeout in seconds",
+    ),
+) -> None:
+    """Import configuration to multiple devices.
+    
+    Scans the specified directory for config files named {device}.cfg or
+    {device}.txt and imports them to matching devices in the topology.
+    
+    Examples:
+        ensp-cli import-all ./configs/
+        ensp-cli import-all ./configs/ --dry-run
+        ensp-cli import-all ./configs/ --parallel
+        ensp-cli import-all ./configs/ --stop-on-error
+    
+    Exit codes:
+        0: All imports successful
+        1: One or more imports failed
+        2: Topology file not found
+        3: Parse error
+    """
+    exit_code = asyncio.run(import_all_async(
+        config_dir=config_dir,
+        topology_path=topo_file,
+        dry_run=dry_run,
+        parallel=parallel,
+        continue_on_error=continue_on_error,
+        output_format=output,
+        timeout=timeout,
+    ))
+    raise typer.Exit(exit_code)
