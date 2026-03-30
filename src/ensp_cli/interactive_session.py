@@ -1,113 +1,221 @@
-"""Interactive session for eNSP device console access."""
+"""Interactive console session for eNSP device connections."""
 
 import asyncio
 import sys
+from typing import TYPE_CHECKING
 
-from .telnet_client import TelnetClient
+if TYPE_CHECKING:
+    from .telnet_client import TelnetClient
 
 
 class InteractiveSession:
-    """Interactive terminal session with an eNSP device.
+    """Interactive console session that pipes user input to Telnet and displays output.
     
-    This class manages the bidirectional data flow between the user
-    and the device, handling user input and device output in separate
-    async tasks.
+    This class provides bidirectional data flow between stdin/stdout and a Telnet
+    connection, enabling real-time interaction with eNSP devices. It handles
+    special keys for graceful exit and provides user-friendly session messages.
     
     Attributes:
-        client: The connected TelnetClient instance.
-        running: Whether the session is currently active.
+        client: The TelnetClient instance to use for communication.
+        device_name: Name of the device for display purposes.
+        _running: Flag indicating if the session is active.
+        _input_task: Task for the input reader coroutine.
+        _output_task: Task for the output reader coroutine.
     """
     
-    def __init__(self, client: TelnetClient) -> None:
+    def __init__(self, client: "TelnetClient", device_name: str = "device") -> None:
         """Initialize interactive session.
         
         Args:
-            client: Connected TelnetClient instance.
+            client: The TelnetClient instance to use for communication.
+            device_name: Name of the device for display purposes.
         """
         self.client = client
-        self.running = False
+        self.device_name = device_name
+        self._running = False
+        self._input_task: asyncio.Task | None = None
+        self._output_task: asyncio.Task | None = None
     
     async def start(self) -> None:
         """Start the interactive session.
         
-        This method runs two concurrent tasks:
-        - One for reading user input and sending to device
-        - One for reading device output and displaying to user
+        Displays connection banner and begins bidirectional communication
+        between stdin/stdout and the Telnet connection.
         
-        The session can be terminated by:
-        - Ctrl+] (0x1d) character
-        - Ctrl+D (EOF on Unix)
-        - KeyboardInterrupt (Ctrl+C)
+        Raises:
+            ConnectionError: If not connected to the device.
         """
-        self.running = True
+        if not self.client.is_connected:
+            raise ConnectionError("Not connected to device")
         
+        self._running = True
+        
+        # Display session banner
+        self._print_banner()
+        
+        # Start input and output readers concurrently
+        self._input_task = asyncio.create_task(self._input_reader())
+        self._output_task = asyncio.create_task(self._output_reader())
+        
+        # Wait for both tasks to complete (one will exit when user disconnects)
         try:
-            await asyncio.gather(
-                self._read_from_user(),
-                self._read_from_device(),
-                return_exceptions=True,
-            )
+            await asyncio.gather(self._input_task, self._output_task)
         except asyncio.CancelledError:
             pass
         finally:
-            self.running = False
+            await self.stop()
     
-    async def _read_from_user(self) -> None:
-        """Read input from user and send to device.
+    async def stop(self) -> None:
+        """Stop the interactive session gracefully.
         
-        Handles special control characters for session management.
+        Cancels running tasks and displays disconnection message.
         """
-        loop = asyncio.get_event_loop()
+        self._running = False
         
-        while self.running:
+        # Cancel running tasks
+        if self._input_task and not self._input_task.done():
+            self._input_task.cancel()
             try:
-                # Read a single character from stdin
-                char = await loop.run_in_executor(None, sys.stdin.read, 1)
+                await self._input_task
+            except asyncio.CancelledError:
+                pass
+        
+        if self._output_task and not self._output_task.done():
+            self._output_task.cancel()
+            try:
+                await self._output_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Print disconnection message
+        print(f"\n[Disconnected from {self.device_name}]")
+    
+    async def _input_reader(self) -> None:
+        """Read from stdin and forward to Telnet.
+        
+        Continuously reads characters from stdin and sends them to the
+        Telnet connection. Handles special keys for session control.
+        """
+        while self._running:
+            try:
+                char = await self._read_char()
                 
-                if not char:  # EOF
-                    self.running = False
+                if char == '\x03':  # Ctrl+C
+                    self._running = False
+                    break
+                elif char == '\x04':  # Ctrl+D
+                    self._running = False
+                    break
+                elif char == '\x1d':  # Ctrl+]
+                    self._running = False
                     break
                 
-                # Ctrl+] (0x1d) - exit session
-                if char == '\x1d':
-                    self.running = False
-                    break
-                
-                # Ctrl+D (0x04) - exit session
-                if char == '\x04':
-                    self.running = False
-                    break
-                
-                # Send character to device
+                # Forward character to Telnet
                 await self.client.write(char)
                 
-            except KeyboardInterrupt:
-                self.running = False
+            except asyncio.CancelledError:
+                break
+            except ConnectionError:
+                # Connection lost, exit gracefully
+                self._running = False
                 break
             except Exception:
-                # Ignore other errors during input
-                continue
+                # Other errors, continue if possible
+                await asyncio.sleep(0.01)
     
-    async def _read_from_device(self) -> None:
-        """Read output from device and display to user."""
-        while self.running:
+    async def _output_reader(self) -> None:
+        """Read from Telnet and display on stdout.
+        
+        Continuously reads data from the Telnet connection and displays
+        it on stdout in real-time.
+        """
+        while self._running:
             try:
-                # Read available data from device
                 data = await self.client.read_available()
-                
                 if data:
-                    # Print to stdout without buffering
                     sys.stdout.write(data)
                     sys.stdout.flush()
                 else:
-                    # Small delay to prevent busy waiting
+                    # Small delay to prevent busy-wait
                     await asyncio.sleep(0.01)
-                    
+            except asyncio.CancelledError:
+                break
             except ConnectionError:
-                # Connection lost
-                print("\n[Connection lost]")
-                self.running = False
+                print("\n[Connection lost]", file=sys.stderr)
+                self._running = False
                 break
             except Exception:
-                # Ignore other errors
+                # Other errors, continue if possible
                 await asyncio.sleep(0.01)
+    
+    async def _read_char(self) -> str:
+        """Read a single character from stdin.
+        
+        Uses platform-specific methods for non-blocking character input.
+        On Windows, uses msvcrt. On Unix, uses standard stdin.
+        
+        Returns:
+            Single character read from stdin.
+        """
+        if sys.platform == 'win32':
+            return await self._read_char_windows()
+        else:
+            return await self._read_char_unix()
+    
+    async def _read_char_windows(self) -> str:
+        """Read a character on Windows using msvcrt.
+        
+        Returns:
+            Single character read from stdin.
+        """
+        import msvcrt
+        
+        while self._running:
+            if msvcrt.kbhit():
+                char = msvcrt.getch()
+                # Decode byte to string
+                try:
+                    return char.decode('utf-8')
+                except UnicodeDecodeError:
+                    # Handle special keys
+                    return char.decode('latin-1')
+            await asyncio.sleep(0.01)
+        
+        return ''
+    
+    async def _read_char_unix(self) -> str:
+        """Read a character on Unix-like systems.
+        
+        Returns:
+            Single character read from stdin.
+        """
+        import termios
+        import tty
+        
+        # Save terminal settings
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        
+        try:
+            # Set terminal to raw mode for character-by-character input
+            tty.setraw(fd)
+            
+            while self._running:
+                # Use asyncio.to_thread for non-blocking read
+                char = await asyncio.to_thread(sys.stdin.read, 1)
+                if char:
+                    return char
+                await asyncio.sleep(0.01)
+        finally:
+            # Restore terminal settings
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+        return ''
+    
+    def _print_banner(self) -> None:
+        """Print session start banner with connection info."""
+        print(f"\n{'='*50}")
+        print(f"Connected to {self.device_name} at {self.client.host}:{self.client.port}")
+        print(f"{'='*50}")
+        print("Press Ctrl+] or type 'exit' to exit")
+        print()
