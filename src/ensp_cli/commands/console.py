@@ -48,12 +48,13 @@ def find_topology_file(path: Optional[Path] = None) -> Path:
     return topo_files[0]
 
 
-def get_device_or_exit(topology: Topology, device_name: str) -> Device:
+def get_device_or_exit(topology: Topology, device_name: str, output_format: str = "text") -> Device:
     """Find device or print error and exit.
     
     Args:
         topology: The topology to search in.
         device_name: The device name to search for.
+        output_format: Output format (text or json).
         
     Returns:
         The Device if found.
@@ -64,11 +65,19 @@ def get_device_or_exit(topology: Topology, device_name: str) -> Device:
     device = topology.get_device(device_name)
     if device is None:
         available = [d.name for d in topology.devices]
-        print(
-            f"Error: Device '{device_name}' not found in topology.",
-            file=sys.stderr,
-        )
-        print(f"Available devices: {', '.join(available)}", file=sys.stderr)
+        if output_format == "json":
+            print(json.dumps({
+                "status": "error",
+                "error": f"Device '{device_name}' not found in topology",
+                "device": device_name,
+                "available_devices": available,
+            }))
+        else:
+            print(
+                f"Error: Device '{device_name}' not found in topology.",
+                file=sys.stderr,
+            )
+            print(f"Available devices: {', '.join(available)}", file=sys.stderr)
         raise typer.Exit(1)
     return device
 
@@ -111,19 +120,7 @@ async def console_async(
         topology = parse_topology(topo_file)
         
         # Find device
-        try:
-            device = get_device_or_exit(topology, device_name)
-        except typer.Exit as e:
-            # Device not found - output JSON error if requested
-            if output_format == "json":
-                available = [d.name for d in topology.devices]
-                print(json.dumps({
-                    "status": "error",
-                    "error": f"Device '{device_name}' not found in topology",
-                    "device": device_name,
-                    "available_devices": available,
-                }))
-            return e.exit_code
+        device = get_device_or_exit(topology, device_name, output_format)
         
         # Connect and start interactive session
         async with device_session(device) as client:
