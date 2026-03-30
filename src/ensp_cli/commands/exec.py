@@ -39,14 +39,13 @@ async def execute_command(
         asyncio.TimeoutError: If command times out.
     """
     async with device_session(device, timeout) as client:
-        return await _execute_command_on_client(client, command, timeout, disable_paging=True)
+        return await _execute_command_on_client(client, command, timeout)
 
 
 async def _execute_command_on_client(
     client,
     command: str,
     timeout: float = 10.0,
-    disable_paging: bool = True,
 ) -> str:
     """Execute a command on an existing client connection.
     
@@ -56,7 +55,6 @@ async def _execute_command_on_client(
         client: Connected Telnet client.
         command: The command to execute.
         timeout: Timeout in seconds for operations.
-        disable_paging: Whether to disable screen paging.
         
     Returns:
         Clean command output (without command echo or prompt).
@@ -64,13 +62,6 @@ async def _execute_command_on_client(
     # Wait for device to be ready and clear initial output
     await asyncio.sleep(0.3)
     await client.read_available()
-    
-    # Disable paging to prevent "---- More ----" prompts
-    if disable_paging:
-        await client.write_line("screen-length 0 temporary")
-        await asyncio.sleep(0.3)
-        # Read and discard the output
-        await client.read_available()
     
     # Send command
     await client.write_line(command)
@@ -80,6 +71,7 @@ async def _execute_command_on_client(
     await asyncio.sleep(0.5)
     
     # Collect output until we see the prompt
+    # Also handle "---- More ----" prompts by sending space
     start_time = asyncio.get_event_loop().time()
     all_output = ""
     
@@ -87,6 +79,16 @@ async def _execute_command_on_client(
         chunk = await client.read_available()
         if chunk:
             all_output += chunk
+            
+            # Check for "---- More ----" prompt and send space to continue
+            if "---- More ----" in all_output:
+                # Remove the More prompt from output
+                all_output = all_output.replace("---- More ----", "")
+                # Send space to continue output
+                await client.write_line(" ")
+                await asyncio.sleep(0.2)
+                continue
+            
             # Check if we have the prompt (look at last few lines only)
             lines = all_output.replace('\r\n', '\n').split('\n')
             recent_lines = [line for line in lines[-3:] if line.strip()]
@@ -156,18 +158,13 @@ async def execute_batch(
     results = []
     
     async with device_session(device, timeout) as client:
-        # Disable paging once at the beginning
-        await client.write_line("screen-length 0 temporary")
-        await asyncio.sleep(0.3)
-        await client.read_available()
-        
         for cmd in commands:
             cmd = cmd.strip()
             if not cmd:
                 continue
                 
             try:
-                output = await _execute_command_on_client(client, cmd, timeout, disable_paging=False)
+                output = await _execute_command_on_client(client, cmd, timeout)
                 results.append({
                     "command": cmd,
                     "output": output,
