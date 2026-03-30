@@ -35,7 +35,7 @@ pip install -e .
 ## Usage
 
 ### List Devices
-
+![输入图片说明](image.png)
 ```bash
 # Auto-discover topology file in current directory
 ensp-cli list
@@ -54,7 +54,7 @@ ensp-cli list --output json
 ```
 
 ### Interactive Console
-
+![输入图片说明](image3.png)
 ```bash
 # Connect to a device interactively
 ensp-cli console Router1
@@ -66,7 +66,7 @@ ensp-cli console Router1 --topology mylab.topo
 ```
 
 ### Execute Commands
-
+![输入图片说明](image1.png)
 ```bash
 # Execute a single command
 ensp-cli exec Router1 "display version"
