@@ -774,7 +774,7 @@ async def export_config_async(
         result = await exporter.export_device_config(device, output_path, fmt, timeout)
         
         # Print success message
-        console.print(f"[green]✓ Exported configuration for {device_name}[/green]")
+        console.print(f"[green][OK] Exported configuration for {device_name}[/green]")
         console.print(f"  Output: [cyan]{output_path.resolve()}[/cyan]")
         console.print(f"  Format: [dim]{fmt}[/dim]")
         
@@ -914,7 +914,7 @@ async def export_all_async(
                 console.print(f"  - {r['device']}: {r.get('error', 'Unknown error')}")
         
         if success_count == total_count:
-            console.print(f"\n[green]✓ All configurations exported to {output_dir.resolve()}[/green]")
+            console.print(f"\n[green][OK] All configurations exported to {output_dir.resolve()}[/green]")
             return 0
         elif success_count > 0:
             console.print(f"\n[yellow]⚠ Partial export completed[/yellow]")
@@ -1478,7 +1478,7 @@ async def import_all_async(
                             save_config=True,
                         )
                         results.append(result)
-                        progress.update(task, description=f"[green]✓ {device.name}[/green]")
+                        progress.update(task, description=f"[green][OK] {device.name}[/green]")
                     except Exception as e:
                         results.append(ImportResult(
                             success=False,
@@ -1590,7 +1590,7 @@ async def _import_single_device(
             stop_on_error=True,
             save_config=True,
         )
-        progress.update(task_id, description=f"[green]✓ {device.name}[/green]")
+        progress.update(task_id, description=f"[green][OK] {device.name}[/green]")
         return result
     except Exception as e:
         progress.update(task_id, description=f"[red]✗ {device.name}[/red]")
@@ -1839,7 +1839,7 @@ def _display_diff_text(device1_name: str, device2_name: str, diff: ConfigDiff, s
                 console.print(f"[dim]{line.content}[/dim]")
             # Skip unchanged lines for cleaner output
     else:
-        console.print(f"\n[green]✓ Configurations are identical[/green]")
+        console.print(f"\n[green][OK] Configurations are identical[/green]")
     
     console.print()
 
@@ -2015,7 +2015,7 @@ async def diff_file_async(
                     elif line.line_type == 'removed':
                         console.print(f"[red]- {line.content}[/red]")
             else:
-                console.print(f"\n[green]✓ Device matches baseline configuration[/green]")
+                console.print(f"\n[green][OK] Device matches baseline configuration[/green]")
             
             console.print()
         
@@ -2251,7 +2251,7 @@ async def audit_configs_async(
                     if comparisons:
                         for comp in comparisons:
                             sim = comp['similarity'] * 100
-                            sim_emoji = "✓" if sim >= threshold * 100 else "⚠️"
+                            sim_emoji = "OK" if sim >= threshold * 100 else "WARN"
                             sim_color = "green" if sim >= threshold * 100 else "yellow"
                             console.print(f"    {comp['device1']} <-> {comp['device2']}: "
                                         f"[{sim_color}]{sim:.0f}% similar[/{sim_color}] {sim_emoji}")
@@ -2268,7 +2268,7 @@ async def audit_configs_async(
             # Overall summary
             total_warnings = sum(len(a.get('warnings', [])) for a in audit_results)
             if total_warnings == 0:
-                console.print(f"\n[green]✓ All configurations are consistent (>{threshold:.0%} similar)[/green]")
+                console.print(f"\n[green][OK] All configurations are consistent (>{threshold:.0%} similar)[/green]")
             else:
                 console.print(f"\n[yellow]⚠ Found {total_warnings} potential configuration inconsistency(s)[/yellow]")
             
