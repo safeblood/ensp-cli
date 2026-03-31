@@ -167,14 +167,19 @@ class DeviceLauncher:
                 name
             ]
             
-            # Start process
+            # Start process (hidden window to avoid popup)
             # Note: eNSP devices use environment variables for port configuration
             # The port is typically set via VBOX_ environment or detected by eNSP
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+            
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NEW_CONSOLE  # Windows: detach console
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
             return {
