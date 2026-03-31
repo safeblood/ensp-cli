@@ -184,6 +184,10 @@ class InteractiveSession:
         """
         import sys
         
+        # Disable local echo to prevent double characters
+        # (device will echo back the characters)
+        self._disable_local_echo()
+        
         while self._running:
             try:
                 # Use asyncio.to_thread for non-blocking read
@@ -199,6 +203,30 @@ class InteractiveSession:
             await asyncio.sleep(0.01)
         
         return ''
+    
+    def _disable_local_echo(self) -> None:
+        """Disable local echo on Windows to prevent double characters.
+        
+        When connected to a remote device, the device echoes back the input,
+        so we need to disable local echo to avoid seeing double characters.
+        """
+        try:
+            import ctypes
+            from ctypes import wintypes
+            
+            kernel32 = ctypes.windll.kernel32
+            
+            # Get console mode
+            hStdin = kernel32.GetStdHandle(wintypes.DWORD(-10))  # STD_INPUT_HANDLE
+            mode = wintypes.DWORD()
+            kernel32.GetConsoleMode(hStdin, ctypes.byref(mode))
+            
+            # Disable ENABLE_ECHO_INPUT (0x0004)
+            mode.value &= ~0x0004
+            kernel32.SetConsoleMode(hStdin, mode)
+        except Exception:
+            # If we can't disable echo, that's okay - just continue
+            pass
     
     async def _read_char_unix(self) -> str:
         """Read a character on Unix-like systems.

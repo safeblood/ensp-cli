@@ -51,6 +51,8 @@ class TelnetClient:
                 self.host,
                 self.port,
                 connect_minwait=0.0,
+                encoding='utf-8',
+                force_binary=False,
             )
         except OSError as e:
             raise ConnectionError(
