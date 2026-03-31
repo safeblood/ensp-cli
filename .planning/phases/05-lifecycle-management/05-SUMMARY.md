@@ -85,14 +85,16 @@ ensp-cli lifecycle launch-topology lab.topo [--timeout 60]
 
 ## Test Coverage
 
-**Total Tests:** 156 passing
+**Phase 5 Tests:** 84 passing
 
 ```
 tests/services/test_device_launcher.py     25 tests  ✅
 tests/services/test_process_manager.py     16 tests  ✅
-tests/integration/test_device_lifecycle.py 12 tests  ✅
-(previous tests)                          103 tests  ✅
+tests/integration/test_device_lifecycle.py 23 tests  ✅
+tests/commands/test_lifecycle.py           20 tests  ✅
 ```
+
+**Project Total:** 187+ tests passing
 
 ---
 
