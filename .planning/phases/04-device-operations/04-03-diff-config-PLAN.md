@@ -160,9 +160,36 @@ All diff tests pass.
 
 Goal: User can compare device configurations
 
-- [ ] `ensp-cli diff-config <dev1> <dev2>` shows differences
-- [ ] `ensp-cli diff-file <device> <file>` compares with baseline
-- [ ] Section filtering works for common sections
-- [ ] Smart ignore filters volatile fields
-- [ ] `ensp-cli audit-configs` finds inconsistencies
-- [ ] Tests cover diff functionality
+- [x] `ensp-cli diff-config <dev1> <dev2>` shows differences
+- [x] `ensp-cli diff-file <device> <file>` compares with baseline
+- [x] Section filtering works for common sections
+- [x] Smart ignore filters volatile fields
+- [x] `ensp-cli audit-configs` finds inconsistencies
+- [x] Tests cover diff functionality
+
+## Completion Summary
+
+All tasks completed successfully:
+
+1. **Config Differ Service** (`src/ensp_cli/services/config_differ.py`)
+   - `ConfigDiffer` class with comparison logic
+   - `ConfigDiff` and `DiffLine` dataclasses
+   - Section extraction for interface, ospf, bgp, acl, vlan, routing, snmp, ntp
+   - Smart ignore for timestamps, uptime, hostname, statistics
+   - Similarity score calculation
+   - Unified diff generation
+   - Audit functionality for topology-wide comparisons
+
+2. **CLI Commands** (`src/ensp_cli/commands/config.py`)
+   - `diff-config <device1> <device2>` - Compare two devices
+   - `diff-file <device> <file>` - Compare device with saved config file
+   - `audit-configs` - Topology-wide configuration audit
+   - Options: `--section`, `--ignore`, `--smart-ignore`, `--output`
+
+3. **Tests** (`tests/services/test_config_differ.py`)
+   - 45 tests covering all functionality
+   - Tests for DiffLine, ConfigDiff, ConfigDiffer
+   - Tests for compare_configs() and diff_from_files() functions
+   - Tests for section extraction patterns
+   - Tests for ignore patterns
+   - Tests for audit functionality
