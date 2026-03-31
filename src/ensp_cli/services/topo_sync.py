@@ -42,8 +42,16 @@ class TopoSyncService:
         if not topo_path.exists():
             raise FileNotFoundError(f"Topology file not found: {topo_path}")
         
-        tree = ET.parse(topo_path)
-        return tree.getroot()
+        # Handle eNSP's "UNICODE" encoding (actually UTF-8 but declared as UNICODE)
+        content = topo_path.read_text(encoding='utf-8', errors='ignore')
+        
+        # Replace UNICODE encoding declaration with UTF-8
+        content = content.replace('encoding="UNICODE"', 'encoding="UTF-8"')
+        
+        # Parse from string
+        root = ET.fromstring(content)
+        
+        return root
     
     def add_device_to_topo(
         self,
