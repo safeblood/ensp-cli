@@ -174,7 +174,9 @@ def launch_router_command(
         raise typer.Exit(1)
     
     # Launch device
-    console.print(f"Launching router {name} ({model})...")
+    console.print(f"[INFO] Launching router {name} ({model})...", style="blue")
+    console.print("[WARNING] Device lifecycle management requires VirtualBox integration.", style="yellow")
+    console.print("          This is an experimental feature.", style="dim")
     
     launcher = get_device_launcher()
     
@@ -225,10 +227,15 @@ def launch_router_command(
                 console.print(f"[WARNING] Failed to update topology: {e}", style="yellow")
     
     # Display success
-    console.print(f"[OK] Launched router {name} ({model})", style="green")
-    console.print(f"     Console: telnet 127.0.0.1:{result['port']}")
+    status_msg = "running" if ready_result["ready"] else "started (not yet accessible)"
+    console.print(f"[OK] Launched router {name} ({model}) - {status_msg}", style="green")
+    console.print(f"     Process: PID {result['pid']}")
     console.print(f"     MAC: {result['mac']}")
-    console.print(f"     PID: {result['pid']}")
+    if ready_result["ready"]:
+        console.print(f"     Console: telnet 127.0.0.1:{result['port']}")
+    else:
+        console.print(f"     Note: Console port {result['port']} not yet accessible", style="yellow")
+        console.print(f"           VirtualBox integration required for console access", style="dim")
     if device.cx is not None and device.cy is not None:
         console.print(f"     Position: ({device.cx}, {device.cy})")
     if topo_updated:
@@ -260,7 +267,9 @@ def launch_switch_command(
         raise typer.Exit(1)
     
     # Launch device
-    console.print(f"Launching switch {name} ({model})...")
+    console.print(f"[INFO] Launching switch {name} ({model})...", style="blue")
+    console.print("[WARNING] Device lifecycle management requires VirtualBox integration.", style="yellow")
+    console.print("          This is an experimental feature.", style="dim")
     
     launcher = get_device_launcher()
     
@@ -311,10 +320,15 @@ def launch_switch_command(
                 console.print(f"[WARNING] Failed to update topology: {e}", style="yellow")
     
     # Display success
-    console.print(f"[OK] Launched switch {name} ({model})", style="green")
-    console.print(f"     Console: telnet 127.0.0.1:{result['port']}")
+    status_msg = "running" if ready_result["ready"] else "started (not yet accessible)"
+    console.print(f"[OK] Launched switch {name} ({model}) - {status_msg}", style="green")
+    console.print(f"     Process: PID {result['pid']}")
     console.print(f"     MAC: {result['mac']}")
-    console.print(f"     PID: {result['pid']}")
+    if ready_result["ready"]:
+        console.print(f"     Console: telnet 127.0.0.1:{result['port']}")
+    else:
+        console.print(f"     Note: Console port {result['port']} not yet accessible", style="yellow")
+        console.print(f"           VirtualBox integration required for console access", style="dim")
     if device.cx is not None and device.cy is not None:
         console.print(f"     Position: ({device.cx}, {device.cy})")
     if topo_updated:

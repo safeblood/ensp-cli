@@ -46,7 +46,8 @@ class TestTelnetClient:
             
             assert client.is_connected
             mock_open.assert_called_once_with(
-                "127.0.0.1", 5000, connect_minwait=0.0
+                "127.0.0.1", 5000, connect_minwait=0.0,
+                encoding='utf-8', force_binary=False
             )
     
     @pytest.mark.asyncio

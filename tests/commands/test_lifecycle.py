@@ -112,7 +112,7 @@ class TestStopDeviceCommand:
         
         result = runner.invoke(app, ["lifecycle", "stop-device", "--all"])
         assert result.exit_code == 0
-        assert "No running devices" in result.output
+        assert "No CLI-managed devices" in result.output
 
 
 class TestPsCommand:

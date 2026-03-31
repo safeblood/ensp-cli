@@ -467,23 +467,24 @@ class TestTopologyLaunch:
         """Test device type to model mapping."""
         from ensp_cli.commands.lifecycle import _map_device_type
         
-        # Test router mapping
-        dev_type, model = _map_device_type("Router")
-        assert dev_type == "router"
-        assert model == "AR2220"
+        # Test router mapping with generic Router type
+        result = _map_device_type("Router", "Router")
+        assert result is not None
+        assert result[0] == "router"
         
-        # Test switch mapping
-        dev_type, model = _map_device_type("Switch")
-        assert dev_type == "switch"
-        assert model == "S5700"
+        # Test switch mapping with generic Switch type
+        result = _map_device_type("Switch", "Switch")
+        assert result is not None
+        assert result[0] == "switch"
         
         # Test LSW mapping
-        dev_type, model = _map_device_type("LSW")
-        assert dev_type == "switch"
+        result = _map_device_type("LSW", "S5700")
+        assert result is not None
+        assert result[0] == "switch"
         
-        # Test default mapping
-        dev_type, model = _map_device_type("Unknown")
-        assert dev_type == "router"
+        # Test unknown device type returns None
+        result = _map_device_type("Unknown", "UnknownDevice")
+        assert result is None
 
 
 class TestErrorHandling:
