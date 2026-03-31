@@ -24,6 +24,30 @@ console = Console()
 # Default device limits
 MAX_DEVICES_DEFAULT = 10
 
+# Shared instances (singleton pattern)
+_device_launcher: DeviceLauncher | None = None
+_port_allocator: PortAllocator | None = None
+_mac_generator: MacGenerator | None = None
+
+
+def get_device_launcher() -> DeviceLauncher:
+    """Get the shared device launcher instance.
+    
+    Ensures port allocation state is shared across commands.
+    """
+    global _device_launcher, _port_allocator, _mac_generator
+    if _device_launcher is None:
+        # Create shared port allocator and mac generator
+        if _port_allocator is None:
+            _port_allocator = PortAllocator()
+        if _mac_generator is None:
+            _mac_generator = MacGenerator()
+        _device_launcher = DeviceLauncher(
+            mac_generator=_mac_generator,
+            port_allocator=_port_allocator
+        )
+    return _device_launcher
+
 
 def _check_device_limit(process_manager: ProcessManager, max_devices: int = MAX_DEVICES_DEFAULT) -> bool:
     """Check if device limit reached.
@@ -152,7 +176,7 @@ def launch_router_command(
     # Launch device
     console.print(f"Launching router {name} ({model})...")
     
-    launcher = DeviceLauncher()
+    launcher = get_device_launcher()
     
     try:
         result = launcher.launch_router(name, model, port)
@@ -238,7 +262,7 @@ def launch_switch_command(
     # Launch device
     console.print(f"Launching switch {name} ({model})...")
     
-    launcher = DeviceLauncher()
+    launcher = get_device_launcher()
     
     try:
         result = launcher.launch_switch(name, model, port)
@@ -309,10 +333,16 @@ def stop_device_command(
     if all_devices:
         devices = process_manager.list_devices(active_only=True)
         if not devices:
-            console.print("[OK] No running devices to stop.", style="green")
+            console.print("[OK] No CLI-managed devices to stop.", style="green")
+            # Check for GUI devices
+            sync_service = TopoSyncService()
+            gui_devices = sync_service.get_gui_devices()
+            if gui_devices:
+                console.print(f"[INFO] Note: {len(gui_devices)} GUI-managed device(s) detected.", style="yellow")
+                console.print("       GUI devices must be stopped from eNSP GUI.")
             return
         
-        console.print(f"Stopping {len(devices)} device(s)...")
+        console.print(f"Stopping {len(devices)} CLI-managed device(s)...")
         for device in devices:
             result = process_manager.stop_device(device.name, force)
             if result["success"]:
@@ -476,7 +506,7 @@ def launch_topology_command(
     console.print()
     
     # Launch devices
-    launcher = DeviceLauncher()
+    launcher = get_device_launcher()
     launched = []
     failed = []
     

@@ -27,6 +27,20 @@ class PortAllocator:
         self._end = end
         self._allocated: Set[int] = set()
         self._lock = threading.Lock()
+        
+        # Load already allocated ports from running devices
+        self._load_allocated_ports()
+    
+    def _load_allocated_ports(self) -> None:
+        """Load allocated ports from running devices state file."""
+        try:
+            from ensp_cli.services.process_manager import ProcessManager
+            pm = ProcessManager()
+            for device in pm.list_devices(active_only=True):
+                if self._start <= device.port <= self._end:
+                    self._allocated.add(device.port)
+        except Exception:
+            pass
     
     def allocate(self, preferred_port: Optional[int] = None) -> int:
         """Allocate an available port.

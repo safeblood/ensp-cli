@@ -206,10 +206,21 @@ class DeviceLauncher:
             
             # Wait a moment for process to start and bind to port
             import time
-            time.sleep(2)
+            time.sleep(3)  # Give more time for port binding
             
             # Detect actual port used by the device
-            actual_port = self._detect_device_port(process.pid) or allocated_port
+            actual_port = self._detect_device_port(process.pid)
+            
+            # If device didn't bind to expected port, check for conflicts
+            if actual_port is None:
+                # Device might be using a different port, scan for it
+                actual_port = self._scan_for_device_port(process.pid)
+            
+            # If still not found, use allocated port
+            if actual_port is None:
+                actual_port = allocated_port
+                # Note: Don't release the port - device may be using it
+                # just on a different port that we couldn't detect
             
             return {
                 "pid": process.pid,
@@ -308,13 +319,47 @@ class DeviceLauncher:
                 errors="ignore"
             )
             
-            # Look for LISTENING ports for this PID
+            # Look for LISTENING ports for this PID in range 2000-2100
             for line in result.stdout.splitlines():
                 if "LISTENING" in line and str(pid) in line:
                     # Parse port from line like "  TCP    0.0.0.0:2000   ...  LISTENING   12345"
                     match = re.search(r":(\d+)\s+.*LISTENING\s+" + str(pid), line)
                     if match:
-                        return int(match.group(1))
+                        port = int(match.group(1))
+                        # Only return ports in our expected range
+                        if 2000 <= port <= 2100:
+                            return port
+        except Exception:
+            pass
+        
+        return None
+    
+    def _scan_for_device_port(self, pid: int) -> Optional[int]:
+        """Scan for any port used by device process in valid range.
+        
+        Args:
+            pid: Process ID of the device
+            
+        Returns:
+            Port number if found, None otherwise
+        """
+        try:
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True,
+                text=True,
+                encoding="gbk",
+                errors="ignore"
+            )
+            
+            # Look for any port 2000-2100 for this PID
+            for line in result.stdout.splitlines():
+                if str(pid) in line:
+                    match = re.search(r":(\d+)\s+.*LISTENING", line)
+                    if match:
+                        port = int(match.group(1))
+                        if 2000 <= port <= 2100:
+                            return port
         except Exception:
             pass
         
