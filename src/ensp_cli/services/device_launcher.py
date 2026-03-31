@@ -1,6 +1,8 @@
 """Device launcher service for eNSP devices."""
 
 import asyncio
+import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -174,17 +176,29 @@ class DeviceLauncher:
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = 0  # SW_HIDE
             
+            # Set environment variable for port (may not be used by eNSP, but try)
+            env = os.environ.copy()
+            env["VBOX_CONSOLE_PORT"] = str(allocated_port)
+            
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 startupinfo=startupinfo,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                env=env
             )
+            
+            # Wait a moment for process to start and bind to port
+            import time
+            time.sleep(2)
+            
+            # Detect actual port used by the device
+            actual_port = self._detect_device_port(process.pid) or allocated_port
             
             return {
                 "pid": process.pid,
-                "port": allocated_port,
+                "port": actual_port,
                 "mac": mac,
                 "name": name,
                 "model": model,
@@ -258,6 +272,38 @@ class DeviceLauncher:
             mac: MAC address to release
         """
         self._mac_gen.release(mac)
+    
+    def _detect_device_port(self, pid: int) -> Optional[int]:
+        """Detect the actual console port used by a device process.
+        
+        Scans netstat output to find which port the process is listening on.
+        
+        Args:
+            pid: Process ID of the device
+            
+        Returns:
+            Port number if found, None otherwise
+        """
+        try:
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True,
+                text=True,
+                encoding="gbk",
+                errors="ignore"
+            )
+            
+            # Look for LISTENING ports for this PID
+            for line in result.stdout.splitlines():
+                if "LISTENING" in line and str(pid) in line:
+                    # Parse port from line like "  TCP    0.0.0.0:2000   ...  LISTENING   12345"
+                    match = re.search(r":(\d+)\s+.*LISTENING\s+" + str(pid), line)
+                    if match:
+                        return int(match.group(1))
+        except Exception:
+            pass
+        
+        return None
 
 
 # Global instance for convenience
