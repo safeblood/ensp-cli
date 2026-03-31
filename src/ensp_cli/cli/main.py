@@ -16,6 +16,9 @@ from ensp_cli.parser.topology_parser import TopologyParser, TopologyParserError
 
 # Import commands
 from ensp_cli.commands.config import (
+    audit_configs_command,
+    diff_config_command,
+    diff_file_command,
     export_all_command,
     export_config_command,
     import_all_command,
@@ -104,6 +107,9 @@ app.command(name="export-config")(export_config_command)
 app.command(name="export-all")(export_all_command)
 app.command(name="import-config")(import_config_command)
 app.command(name="import-all")(import_all_command)
+app.command(name="diff-config")(diff_config_command)
+app.command(name="diff-file")(diff_file_command)
+app.command(name="audit-configs")(audit_configs_command)
 
 
 def _output_json(topology: Topology) -> None:
