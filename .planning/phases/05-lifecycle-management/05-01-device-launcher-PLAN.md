@@ -37,11 +37,18 @@ From research of user's eNSP v1.3 installation:
 - Default range: 2000-2100
 - Scan for available ports
 - Reserve port before launching
+- **Detect GUI devices**: Scan `eNSP_Router.exe` / `eNSP_Switch.exe` processes to avoid conflicts
 
 ### MAC Address Format
 - Huawei OUI: `54-89-98` (routers), `4C-1F-CC` (switches)
 - Random last 3 bytes: `XX-XX-XX`
 - Ensure uniqueness per device
+
+### GUI Compatibility
+- Detect existing GUI-launched devices via process scanning
+- Coordinate port allocation to avoid conflicts
+- Support "integration mode" where CLI can manage GUI devices
+- Update `.topo` file to include CLI-launched devices (for GUI visibility)
 
 ## Tasks
 
@@ -68,13 +75,15 @@ Create `src/ensp_cli/services/port_allocator.py`.
 Implementation:
 1. Define `PortAllocator` class
 2. Default range: 2000-2100
-3. Scan for available ports using socket.bind()
-4. Reserve port (mark as in-use)
-5. Release port on device stop
-6. Thread-safe for concurrent allocation
+3. **Detect GUI device ports**: Scan for eNSP_Router/Switch processes and extract their ports
+4. Scan for available ports using socket.bind()
+5. Exclude ports used by GUI devices
+6. Reserve port (mark as in-use)
+7. Release port on device stop
+8. Thread-safe for concurrent allocation
 
 <verify>
-Allocator returns unique available ports.
+Allocator returns unique available ports, avoiding GUI conflicts.
 </verify>
 </task>
 
@@ -110,8 +119,9 @@ Implementation:
 1. After process start, poll Telnet port
 2. Try connecting every 1 second
 3. Timeout after 30 seconds
-4. Return ready status and time taken
-5. Handle connection failures gracefully
+4. **Auto-retry**: If launch fails, retry up to 3 times with 2s delay
+5. Return ready status and time taken
+6. Handle connection failures gracefully
 
 <verify>
 Detection accurately reports device readiness.

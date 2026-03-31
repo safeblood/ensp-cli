@@ -57,10 +57,13 @@ Through investigation of the user's eNSP installation, we discovered:
 1. [ ] `ensp-cli launch-router R1 --model AR2220` starts router device
 2. [ ] `ensp-cli launch-switch S1 --model S5700` starts switch device
 3. [ ] `ensp-cli stop-device R1` terminates device process
-4. [ ] `ensp-cli ps` shows running devices with ports and status
+4. [ ] `ensp-cli ps` shows running devices with ports and status (both CLI and GUI)
 5. [ ] `ensp-cli launch-topology lab.topo` starts all devices in topology
-6. [ ] Console ports auto-assigned without conflicts
+6. [ ] Console ports auto-assigned without conflicts (detects GUI devices)
 7. [ ] Devices reachable via Telnet within 30 seconds of launch
+8. [ ] `.topo` file updated with CLI-launched devices (visible in GUI)
+9. [ ] Launch retries 3 times on failure before giving up
+10. [ ] Max 10 devices by default (configurable)
 
 ---
 

@@ -43,16 +43,21 @@ def launch_router_command(
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Console port (auto if not specified)"),
     topo_file: Optional[Path] = typer.Option(None, "--topology", "-t"),
     timeout: int = typer.Option(30, "--timeout", help="Seconds to wait for device ready"),
+    update_topo: bool = typer.Option(True, "--update-topo/--no-update-topo", help="Update topology file"),
 )
 ```
 
 Implementation:
-1. Check if device name already running
+1. Check if device name already running (global check)
 2. Get port (auto-allocate if not specified)
-3. Launch router via DeviceLauncher
-4. Wait for readiness
-5. Register with ProcessManager
-6. Display success message with port info
+3. **Detect GUI devices**: Scan for existing eNSP processes to avoid conflicts
+4. Launch router via DeviceLauncher (with auto-retry)
+5. Wait for readiness
+6. Register with ProcessManager
+7. **Update topology file**: Add device to .topo with console_port attribute
+   - Backup original .topo file
+   - Add `<dev>` node with `com_port` and `source="cli"`
+8. Display success message with port info
 
 Output:
 ```
@@ -60,10 +65,11 @@ Output:
      Console: telnet 127.0.0.1:2000
      MAC: 54-89-98-XX-XX-XX
      PID: 12345
+     Topology updated: lab.topo
 ```
 
 <verify>
-Command launches router successfully.
+Command launches router and updates topology file.
 </verify>
 </task>
 
@@ -79,13 +85,14 @@ def launch_switch_command(
     port: Optional[int] = typer.Option(None, "--port", "-p"),
     topo_file: Optional[Path] = typer.Option(None, "--topology", "-t"),
     timeout: int = typer.Option(30, "--timeout"),
+    update_topo: bool = typer.Option(True, "--update-topo/--no-update-topo"),
 )
 ```
 
-Similar to launch-router but for switches.
+Similar to launch-router but for switches. Includes GUI detection and topology update.
 
 <verify>
-Command launches switch successfully.
+Command launches switch and updates topology file.
 </verify>
 </task>
 
@@ -187,10 +194,12 @@ All commands appear in help.
 
 Goal: All CLI commands work with good UX
 
-- [ ] launch-router command works
-- [ ] launch-switch command works
+- [ ] launch-router command works with GUI detection
+- [ ] launch-switch command works with GUI detection
+- [ ] Topology file updated with launched devices
 - [ ] stop-device command works
-- [ ] ps command shows running devices
+- [ ] ps command shows running devices (both CLI and GUI)
 - [ ] launch-topology works with progress bar
+- [ ] Auto-retry on launch failure (3 times)
 - [ ] All commands have help text and examples
 - [ ] JSON output supported
