@@ -85,23 +85,36 @@ def _find_topology_file(topo_file: Optional[Path]) -> Optional[Path]:
     return None
 
 
-def _map_device_type(device_type: str) -> tuple[str, str]:
+def _map_device_type(device_type: str, model: str) -> tuple[str, str] | None:
     """Map topology device type to CLI type and model.
     
     Args:
-        device_type: Device type from topology
+        device_type: Device type from topology (may be empty)
+        model: Device model from topology
         
     Returns:
-        (device_type, model) tuple
+        (device_type, model) tuple, or None if device should be skipped
     """
-    type_lower = device_type.lower()
+    if not model:
+        return None
     
-    if "router" in type_lower:
+    model_lower = model.lower()
+    type_lower = (device_type or "").lower()
+    
+    # Skip non-device types (Cloud, etc.)
+    if "cloud" in model_lower:
+        return None
+    
+    # Map by model
+    if "ar" in model_lower or "router" in model_lower:
         return ("router", "AR2220")
-    elif "switch" in type_lower or "lsw" in type_lower:
+    elif "s5700" in model_lower or "s3700" in model_lower or "switch" in model_lower:
         return ("switch", "S5700")
-    else:
-        return ("router", "AR2220")  # Default
+    elif "lsw" in type_lower or "switch" in type_lower:
+        return ("switch", "S5700")
+    
+    # Unknown device type, skip
+    return None
 
 
 @app.command(name="launch-router")
@@ -462,6 +475,7 @@ def launch_topology_command(
     for dev_elem in topo_devices:
         dev_name = dev_elem.get("name", "")
         dev_type = dev_elem.get("device_type", "")
+        dev_model = dev_elem.get("model", "")
         
         if not dev_name:
             continue
@@ -472,7 +486,12 @@ def launch_topology_command(
             continue
         
         # Map device type
-        device_type, model = _map_device_type(dev_type or "router")
+        mapped = _map_device_type(dev_type, dev_model)
+        if mapped is None:
+            console.print(f"  {dev_name}: Skipping (unsupported: type={dev_type}, model={dev_model})")
+            continue
+        
+        device_type, model = mapped
         
         # Launch
         try:
