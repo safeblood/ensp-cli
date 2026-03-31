@@ -105,22 +105,20 @@ def _map_device_type(device_type: str, model: str) -> tuple[str, str] | None:
     if "cloud" in model_lower:
         return None
     
-    # Map by model - preserve original model name if it's a category
-    if model_lower == "router":
-        # Generic router category from eNSP GUI
-        return ("router", "Router")
-    elif "ar2220" in model_lower:
-        return ("router", "AR2220")
-    elif "ar3260" in model_lower:
-        return ("router", "AR3260")
-    elif model_lower == "switch":
-        # Generic switch category from eNSP GUI
-        return ("switch", "Switch")
-    elif "s5700" in model_lower:
-        return ("switch", "S5700")
-    elif "s3700" in model_lower:
-        return ("switch", "S3700")
-    elif "lsw" in type_lower:
+    # Router models (from eNSP GUI)
+    router_models = ["ar201", "ar1220", "ar2220", "ar2240", "ar3260", "ne40e", "router"]
+    for router_model in router_models:
+        if router_model in model_lower:
+            return ("router", model.upper())
+    
+    # Switch models (from eNSP GUI)
+    switch_models = ["s3700", "s5700", "ce6800", "ce12800", "switch"]
+    for switch_model in switch_models:
+        if switch_model in model_lower:
+            return ("switch", model.upper())
+    
+    # Fallback by type
+    if "lsw" in type_lower:
         return ("switch", "S5700")
     
     # Unknown device type, skip

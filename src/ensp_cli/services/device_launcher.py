@@ -18,14 +18,21 @@ class DeviceLauncher:
     ENSP_BASE_PATH = Path("C:/Program Files/Huawei/eNSP/vboxserver/devices")
     
     DEVICE_EXECUTABLES = {
-        # Router models
+        # Router models (all use eNSP_Router.exe) - keys are UPPERCASE for case-insensitive lookup
+        "AR201": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",
+        "AR1220": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",
         "AR2220": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",
+        "AR2240": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",
         "AR3260": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",
-        "Router": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",  # Generic router category
-        # Switch models
+        "NE40E": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",
+        "ROUTER": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",  # Generic router category
+        # Switch models - keys are UPPERCASE
         "S3700": ENSP_BASE_PATH / "LSW" / "s3700" / "eNSP_Switch.exe",
         "S5700": ENSP_BASE_PATH / "LSW" / "s5700" / "eNSP_Switch.exe",
-        "Switch": ENSP_BASE_PATH / "LSW" / "s5700" / "eNSP_Switch.exe",  # Generic switch category
+        "SWITCH": ENSP_BASE_PATH / "LSW" / "s5700" / "eNSP_Switch.exe",  # Generic switch category
+        # CE switches (if available, otherwise map to S5700)
+        "CE6800": ENSP_BASE_PATH / "LSW" / "s5700" / "eNSP_Switch.exe",
+        "CE12800": ENSP_BASE_PATH / "LSW" / "s5700" / "eNSP_Switch.exe",
     }
     
     def __init__(
@@ -67,10 +74,12 @@ class DeviceLauncher:
             ValueError: If model is not supported
             RuntimeError: If launch fails after retries
         """
-        if model not in self.DEVICE_EXECUTABLES:
+        # Case-insensitive model lookup
+        model_upper = model.upper()
+        if model_upper not in self.DEVICE_EXECUTABLES:
             raise ValueError(f"Unsupported router model: {model}")
         
-        return self._launch_device(name, model, "router", port)
+        return self._launch_device(name, model_upper, "router", port)
     
     def launch_switch(
         self,
@@ -92,10 +101,12 @@ class DeviceLauncher:
             ValueError: If model is not supported
             RuntimeError: If launch fails after retries
         """
-        if model not in self.DEVICE_EXECUTABLES:
+        # Case-insensitive model lookup
+        model_upper = model.upper()
+        if model_upper not in self.DEVICE_EXECUTABLES:
             raise ValueError(f"Unsupported switch model: {model}")
         
-        return self._launch_device(name, model, "switch", port)
+        return self._launch_device(name, model_upper, "switch", port)
     
     def _launch_device(
         self,
