@@ -47,6 +47,21 @@ Port conflicts handled gracefully.
 </verify>
 </task>
 
+<task id="2b" name="Add coordinate allocator tests">
+Test coordinate allocation for topology positioning.
+
+Tests:
+1. Test coordinate calculation from existing topology
+2. Test non-overlapping position allocation
+3. Test grid layout algorithm
+4. Test custom coordinate override (--x, --y)
+5. Test boundary conditions (empty topology)
+
+<verify>
+Coordinates allocated correctly without overlap.
+</verify>
+</task>
+
 <task id="3" name="Add readiness timeout tests">
 Test device startup failure scenarios.
 
@@ -126,6 +141,8 @@ Goal: Phase 5 is production-ready
 - [ ] 90%+ test coverage
 - [ ] All success criteria pass
 - [ ] Integration tests validate full workflows
+- [ ] **Coordinate allocator tests pass**
+- [ ] **Topology coordinate updates verified**
 - [ ] Documentation complete
 - [ ] No critical or major bugs
 - [ ] Performance acceptable (devices start in <30s)

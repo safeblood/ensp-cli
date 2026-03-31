@@ -44,6 +44,8 @@ def launch_router_command(
     topo_file: Optional[Path] = typer.Option(None, "--topology", "-t"),
     timeout: int = typer.Option(30, "--timeout", help="Seconds to wait for device ready"),
     update_topo: bool = typer.Option(True, "--update-topo/--no-update-topo", help="Update topology file"),
+    x: Optional[int] = typer.Option(None, "--x", help="X coordinate in topology (auto if not specified)"),
+    y: Optional[int] = typer.Option(None, "--y", help="Y coordinate in topology (auto if not specified)"),
 )
 ```
 
@@ -51,13 +53,14 @@ Implementation:
 1. Check if device name already running (global check)
 2. Get port (auto-allocate if not specified)
 3. **Detect GUI devices**: Scan for existing eNSP processes to avoid conflicts
-4. Launch router via DeviceLauncher (with auto-retry)
-5. Wait for readiness
-6. Register with ProcessManager
-7. **Update topology file**: Add device to .topo with console_port attribute
+4. **Calculate position**: If --x/--y not specified, auto-calculate to avoid overlap
+5. Launch router via DeviceLauncher (with auto-retry)
+6. Wait for readiness
+7. Register with ProcessManager
+8. **Update topology file**: Add device to .topo with console_port and coordinates
    - Backup original .topo file
-   - Add `<dev>` node with `com_port` and `source="cli"`
-8. Display success message with port info
+   - Add `<dev>` node with `com_port`, `cx`, `cy`, and `source="cli"`
+9. Display success message with port and position info
 
 Output:
 ```
@@ -65,11 +68,12 @@ Output:
      Console: telnet 127.0.0.1:2000
      MAC: 54-89-98-XX-XX-XX
      PID: 12345
+     Position: (500, 300)
      Topology updated: lab.topo
 ```
 
 <verify>
-Command launches router and updates topology file.
+Command launches router and updates topology file with coordinates.
 </verify>
 </task>
 
@@ -86,13 +90,25 @@ def launch_switch_command(
     topo_file: Optional[Path] = typer.Option(None, "--topology", "-t"),
     timeout: int = typer.Option(30, "--timeout"),
     update_topo: bool = typer.Option(True, "--update-topo/--no-update-topo"),
+    x: Optional[int] = typer.Option(None, "--x", help="X coordinate in topology (auto if not specified)"),
+    y: Optional[int] = typer.Option(None, "--y", help="Y coordinate in topology (auto if not specified)"),
 )
 ```
 
-Similar to launch-router but for switches. Includes GUI detection and topology update.
+Similar to launch-router but for switches. Includes GUI detection, topology update with coordinates.
+
+Output:
+```
+[OK] Launched switch S1 (S5700)
+     Console: telnet 127.0.0.1:2001
+     MAC: 4C-1F-CC-XX-XX-XX
+     PID: 12346
+     Position: (600, 300)
+     Topology updated: lab.topo
+```
 
 <verify>
-Command launches switch and updates topology file.
+Command launches switch and updates topology file with coordinates.
 </verify>
 </task>
 
@@ -196,10 +212,12 @@ Goal: All CLI commands work with good UX
 
 - [ ] launch-router command works with GUI detection
 - [ ] launch-switch command works with GUI detection
-- [ ] Topology file updated with launched devices
+- [ ] Topology file updated with launched devices and **coordinates (cx, cy)**
 - [ ] stop-device command works
 - [ ] ps command shows running devices (both CLI and GUI)
 - [ ] launch-topology works with progress bar
 - [ ] Auto-retry on launch failure (3 times)
 - [ ] All commands have help text and examples
 - [ ] JSON output supported
+- [ ] **Coordinate auto-allocation prevents device overlap in GUI**
+- [ ] **Custom --x/--y parameters work for manual positioning**

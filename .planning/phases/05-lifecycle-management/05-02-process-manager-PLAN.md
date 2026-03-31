@@ -3,6 +3,7 @@ wave: 2
 depends_on: ["05-01-device-launcher-PLAN.md"]
 files_modified:
   - src/ensp_cli/services/process_manager.py
+  - src/ensp_cli/services/topo_sync.py
   - src/ensp_cli/models/running_device.py
 autonomous: true
 ---
@@ -120,6 +121,31 @@ All tests pass with good coverage.
 </verify>
 </task>
 
+<task id="6" name="Create topology sync service">
+Create `src/ensp_cli/services/topo_sync.py`.
+
+Implementation:
+1. Define `TopoSyncService` class
+2. **load_topology(topo_path)**: Parse XML and extract device positions
+3. **add_device_to_topo(device_info, coordinates)**:
+   - Use CoordinateAllocator to calculate position (cx, cy)
+   - Insert new `<dev>` node with `com_port`, `cx`, `cy` attributes
+   - Mark `source="cli"` to identify CLI-launched devices
+   - Backup original .topo file before modification
+4. **remove_device_from_topo(device_name)**: Remove device node
+5. **get_gui_devices()**: Scan for GUI-launched devices
+6. **sync_running_state()**: Reconcile state with actual processes
+
+**Coordinate Integration:**
+- When adding device, query CoordinateAllocator for next available position
+- Grid layout: default spacing 100px, start from (100, 100)
+- Support manual override via --x/--y parameters
+
+<verify>
+Topology file correctly updated with device coordinates.
+</verify>
+</task>
+
 ## must_haves
 
 Goal: Process state is tracked and manageable
@@ -129,4 +155,6 @@ Goal: Process state is tracked and manageable
 - [ ] Can stop devices gracefully
 - [ ] Can force stop hung devices
 - [ ] Status monitoring works
+- [ ] **Topology sync service works with coordinate updates**
+- [ ] **.topo file backup before modification**
 - [ ] Tests cover all scenarios

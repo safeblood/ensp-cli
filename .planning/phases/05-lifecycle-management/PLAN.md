@@ -61,9 +61,11 @@ Through investigation of the user's eNSP installation, we discovered:
 5. [ ] `ensp-cli launch-topology lab.topo` starts all devices in topology
 6. [ ] Console ports auto-assigned without conflicts (detects GUI devices)
 7. [ ] Devices reachable via Telnet within 30 seconds of launch
-8. [ ] `.topo` file updated with CLI-launched devices (visible in GUI)
+8. [ ] `.topo` file updated with CLI-launched devices **including coordinates (cx, cy)**
 9. [ ] Launch retries 3 times on failure before giving up
 10. [ ] Max 10 devices by default (configurable)
+11. [ ] **Devices appear at proper positions in GUI (no overlap, grid layout)**
+12. [ ] **Custom coordinates supported via `--x` and `--y` parameters**
 
 ---
 

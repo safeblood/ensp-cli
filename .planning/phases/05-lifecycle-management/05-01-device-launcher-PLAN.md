@@ -5,6 +5,7 @@ files_modified:
   - src/ensp_cli/services/device_launcher.py
   - src/ensp_cli/services/port_allocator.py
   - src/ensp_cli/services/mac_generator.py
+  - src/ensp_cli/services/coordinate_allocator.py
 autonomous: true
 ---
 
@@ -84,6 +85,25 @@ Implementation:
 
 <verify>
 Allocator returns unique available ports, avoiding GUI conflicts.
+</verify>
+</task>
+
+<task id="2b" name="Create coordinate allocator">
+Create `src/ensp_cli/services/coordinate_allocator.py`.
+
+Implementation:
+1. Define `CoordinateAllocator` class
+2. Parse existing topology to find device positions
+3. Calculate bounding box of existing devices
+4. Allocate new position with grid layout:
+   - Default grid size: 100x100 pixels
+   - Place to the right or below existing devices
+   - Avoid overlap
+5. Support custom x, y coordinates if specified
+6. Return (cx, cy) tuple
+
+<verify>
+Allocator returns non-overlapping coordinates for new devices.
 </verify>
 </task>
 
