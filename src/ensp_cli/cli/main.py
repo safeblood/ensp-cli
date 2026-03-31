@@ -29,6 +29,7 @@ from ensp_cli.commands.config import (
 )
 from ensp_cli.commands.console import console_command
 from ensp_cli.commands.exec import exec_batch_command, exec_command
+from ensp_cli.commands.lifecycle import app as lifecycle_app
 
 
 class OutputFormat(str, Enum):
@@ -110,6 +111,9 @@ app.command(name="import-all")(import_all_command)
 app.command(name="diff-config")(diff_config_command)
 app.command(name="diff-file")(diff_file_command)
 app.command(name="audit-configs")(audit_configs_command)
+
+# Register lifecycle commands as sub-commands
+app.add_typer(lifecycle_app, name="lifecycle")
 
 
 def _output_json(topology: Topology) -> None:
