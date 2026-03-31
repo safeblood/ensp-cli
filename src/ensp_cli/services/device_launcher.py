@@ -18,10 +18,14 @@ class DeviceLauncher:
     ENSP_BASE_PATH = Path("C:/Program Files/Huawei/eNSP/vboxserver/devices")
     
     DEVICE_EXECUTABLES = {
+        # Router models
         "AR2220": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",
         "AR3260": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",
+        "Router": ENSP_BASE_PATH / "AR" / "AR" / "eNSP_Router.exe",  # Generic router category
+        # Switch models
         "S3700": ENSP_BASE_PATH / "LSW" / "s3700" / "eNSP_Switch.exe",
         "S5700": ENSP_BASE_PATH / "LSW" / "s5700" / "eNSP_Switch.exe",
+        "Switch": ENSP_BASE_PATH / "LSW" / "s5700" / "eNSP_Switch.exe",  # Generic switch category
     }
     
     def __init__(
