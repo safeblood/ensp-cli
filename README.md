@@ -11,6 +11,8 @@ A CLI tool for managing eNSP (Enterprise Network Simulation Platform) topology f
 - **Device Management**: List devices, view connections, auto-discover topology files
 - **Interactive Console**: Connect to devices via Telnet for interactive sessions
 - **Command Execution**: Execute single commands on devices with output capture
+- **Configuration Management**: Export/import device configurations with diff and audit
+- **Device Lifecycle**: Launch/stop eNSP devices independently without GUI
 - **Rich Output**: Table, JSON, and visual output formats with syntax highlighting
 - **Exit Codes**: Proper exit codes for scripting and automation
 
