@@ -93,14 +93,15 @@
 
 ## Summary
 
-| Phase | Name | Requirements | Success Criteria |
-|-------|------|--------------|------------------|
+| Phase | Name | Requirements | Success Criteria | Status |
+|-------|------|--------------|------------------|--------|
 | 1 | Foundation & Topology Parsing | TOPO-01, TOPO-02 | 4 | ✅ |
 | 2 | Telnet Connection Layer | CONN-01, CONN-02 | 4 | ✅ |
 | 3 | Command Execution & CLI Polish | EXEC-01, CLI-01, CLI-02, CLI-03 | 5 | ✅ |
-| 4 | Device Operations | TOPO-03, TOPO-04, TOPO-05, TOPO-06 | 6 | 🔵 |
+| 4 | Device Operations (Read-Only Helpers) | TOPO-03, TOPO-04, TOPO-05, TOPO-06 | 6 | ✅ |
+| 5 | Device Lifecycle Management | LIFECYCLE-01~06 | 7 | 🔵 |
 
-**Total:** 4 phases, 12 requirements, 19 success criteria
+**Total:** 5 phases, 18 requirements, 26 success criteria
 
 ---
 
@@ -114,40 +115,83 @@ This ordering follows the research-recommended build order: Models → XML Parse
 
 ---
 
-## Phase 4: Device Operations
+## Phase 4: Device Operations (Read-Only Helpers)
 
-**Goal:** Enable topology modification - add/remove devices and manage connections
+**Goal:** Provide read-only helper commands for device configuration viewing, export, and comparison
+
+**Note:** Phase 4 was redefined from "topology modification" to "read-only helpers" because eNSP does not watch .topo file changes.
 
 **Requirements Mapped:**
 | Requirement | Description |
 |-------------|-------------|
-| TOPO-03 | Add new devices to topology |
-| TOPO-04 | Remove devices from topology |
-| TOPO-05 | Create connections between devices |
-| TOPO-06 | Delete connections between devices |
+| TOPO-03 | View device configuration |
+| TOPO-04 | Export device configuration |
+| TOPO-05 | Compare configurations |
+| TOPO-06 | Audit configuration consistency |
 
 **Success Criteria:**
-1. User can add a new device with `ensp-cli add-device <name> --type <type>`
-2. User can remove a device with `ensp-cli remove-device <name>`
-3. User can connect two devices with `ensp-cli connect <dev1> <dev2>`
-4. User can disconnect devices with `ensp-cli disconnect <dev1> <dev2>`
-5. Changes are saved back to the .topo file
-6. Visual output reflects changes immediately
+1. User can view config with `ensp-cli show-config <device>`
+2. User can export config with `ensp-cli export-config <device> -o <file>`
+3. User can compare configs with `ensp-cli diff-config <dev1> <dev2>`
+4. User can audit configs with `ensp-cli audit-configs`
+5. Import configs with `ensp-cli import-config <device> <file>`
+6. Batch command execution with `ensp-cli exec-batch`
 
 **Key Components:**
-- Topology modification API
-- Device add/remove commands
-- Connect/disconnect commands
-- XML serialization for save
-- Backup/rollback mechanism
+- Config viewing commands (show-config, show-interfaces, show-routes)
+- Config exporter service
+- Config importer service
+- Config differ service
+- Import/export with multiple formats
 
 ---
 
-## Future Phases (Post-v1.1)
+## Phase 5: Device Lifecycle Management
 
-- **Phase 5:** Multi-Device Operations (broadcast commands, batch execution)
-- **Phase 6:** Configuration Management (snapshots, exports)
-- **Phase 7:** Structured Output & LLM Integration (TextFSM, agent export)
+**Goal:** Enable independent device launching and management without eNSP GUI
+
+**Research Findings:**
+- New eNSP (>=1.3) uses Huawei's lightweight virtualization engine
+- Router process: `eNSP_Router.exe` with `sim` parameter
+- Switch process: `eNSP_Switch.exe` with `sim` parameter
+- Base images: `.vdi` format in `vboxserver/` directory
+- Console ports: Auto-assigned (2000, 2001, ...)
+- Each device needs unique MAC address
+
+**Requirements Mapped:**
+| Requirement | Description |
+|-------------|-------------|
+| LIFECYCLE-01 | Launch router devices independently |
+| LIFECYCLE-02 | Launch switch devices independently |
+| LIFECYCLE-03 | Stop running devices |
+| LIFECYCLE-04 | View running device status |
+| LIFECYCLE-05 | Launch all devices from topology |
+| LIFECYCLE-06 | Auto-assign console ports |
+
+**Success Criteria:**
+1. User can launch router: `ensp-cli launch-router R1 --model AR2220`
+2. User can launch switch: `ensp-cli launch-switch S1 --model S5700`
+3. User can stop device: `ensp-cli stop-device R1`
+4. User can view running devices: `ensp-cli ps`
+5. User can launch topology: `ensp-cli launch-topology lab.topo`
+6. Console ports auto-assigned, no conflicts
+7. Devices reachable via Telnet after launch
+
+**Key Components:**
+- Device launcher service
+- Process manager (track PIDs)
+- Port allocator (2000-2100 range)
+- MAC address generator
+- Device readiness detector
+- Running state persistence
+
+---
+
+## Future Phases (Post-v1.2)
+
+- **Phase 6:** Multi-Device Operations (broadcast commands, batch execution)
+- **Phase 7:** Configuration Management (snapshots, exports)
+- **Phase 8:** Structured Output & LLM Integration (TextFSM, agent export)
 
 ---
 

@@ -23,6 +23,7 @@
 | 2 | Telnet Connection Layer | 🟢 Complete | CONN-01, CONN-02 |
 | 3 | Command Execution & CLI Polish | 🟢 Complete | EXEC-01, CLI-01, CLI-02, CLI-03 |
 | 4 | Device Operations | 🟢 Complete | TOPO-03, TOPO-04, TOPO-05, TOPO-06 |
+| 5 | Device Lifecycle Management | 🔵 Planned | LIFECYCLE-01~06 |
 
 ---
 
@@ -129,10 +130,32 @@
 
 **Status:** All 4 sub-plans complete, 290+ tests passing
 
-### Future Phases (v1.2+)
-- **Phase 5**: Multi-Device Operations (broadcast commands, batch execution)
-- **Phase 6**: Configuration Management (snapshots, exports, diff)
-- **Phase 7**: LLM Integration (TextFSM parsing, structured output)
+### Phase 5: Device Lifecycle Management 🔵 PLANNED
+
+**Goal:** Enable independent device launching and management without eNSP GUI
+
+**Research Completed:**
+- eNSP v1.3 uses Huawei lightweight virtualization (not QEMU)
+- Router: `eNSP_Router.exe sim system_mac=XX-XX-XX-XX-XX-XX <name>`
+- Switch: `eNSP_Switch.exe sim system_mac=XX-XX-XX-XX-XX-XX <name>`
+- Base images: `.vdi` format in `vboxserver/` directory
+- Console ports: Auto-assigned (2000, 2001, ...)
+
+**New Commands:**
+- `ensp-cli launch-router R1 --model AR2220` - Start router
+- `ensp-cli launch-switch S1 --model S5700` - Start switch
+- `ensp-cli stop-device R1` - Stop device
+- `ensp-cli ps` - List running devices
+- `ensp-cli launch-topology lab.topo` - Start all devices
+
+**Sub-Plans:** 05-01 to 05-04
+
+**Status:** Planning complete, ready for execution
+
+### Future Phases (v1.3+)
+- **Phase 6**: Multi-Device Operations (broadcast commands, batch execution)
+- **Phase 7**: Configuration Management (snapshots, exports, diff)
+- **Phase 8**: LLM Integration (TextFSM parsing, structured output)
 
 ---
 
