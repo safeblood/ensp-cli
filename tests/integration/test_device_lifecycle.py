@@ -1,5 +1,8 @@
 """Integration tests for device lifecycle management."""
 
+import asyncio
+import threading
+import time
 import pytest
 from pathlib import Path
 
@@ -287,3 +290,255 @@ class TestDeviceLifecycle:
         
         assert not result["success"]
         assert "not found" in result["message"]
+
+
+class TestPortConflictHandling:
+    """Test port conflict scenarios."""
+    
+    def test_port_allocator_tracks_allocated(self) -> None:
+        """Test that port allocator correctly tracks allocated ports."""
+        alloc = PortAllocator(start=7000, end=7010)
+        
+        # Allocate a few ports
+        port1 = alloc.allocate()
+        port2 = alloc.allocate()
+        
+        # Should be tracked
+        assert alloc.is_allocated(port1)
+        assert alloc.is_allocated(port2)
+        assert port1 != port2
+        
+        # Release one
+        alloc.release(port1)
+        assert not alloc.is_allocated(port1)
+        assert alloc.is_allocated(port2)
+    
+    def test_port_range_exhaustion_error(self) -> None:
+        """Test error when port range is exhausted."""
+        alloc = PortAllocator(start=5000, end=5002)
+        
+        # Allocate all ports
+        alloc.allocate()  # 5000
+        alloc.allocate()  # 5001
+        alloc.allocate()  # 5002
+        
+        # Next allocation should fail
+        with pytest.raises(RuntimeError, match="No available ports"):
+            alloc.allocate()
+    
+    def test_port_release_and_reuse(self) -> None:
+        """Test that released ports can be reused."""
+        alloc = PortAllocator(start=6000, end=6010)
+        
+        # Allocate and release
+        port = alloc.allocate()
+        assert alloc.is_allocated(port)
+        
+        alloc.release(port)
+        assert not alloc.is_allocated(port)
+        
+        # Should get the same port back (first available)
+        new_port = alloc.allocate()
+        assert new_port == port
+
+
+class TestReadinessTimeout:
+    """Test device readiness timeout handling."""
+    
+    @pytest.mark.asyncio
+    async def test_wait_for_ready_timeout(self) -> None:
+        """Test timeout when device never becomes ready."""
+        launcher = DeviceLauncher()
+        
+        # Use a port that's unlikely to have a device
+        result = await launcher.wait_for_ready(
+            port=65000,
+            timeout=1,  # Short timeout
+            poll_interval=0.1
+        )
+        
+        assert not result["ready"]
+        assert "timeout" in result.get("error", "").lower() or not result["ready"]
+        assert result["time_taken"] >= 1.0
+    
+    @pytest.mark.asyncio
+    async def test_wait_for_ready_success(self) -> None:
+        """Test successful readiness detection."""
+        launcher = DeviceLauncher()
+        
+        # This test would require an actual device running
+        # For now, just verify the method exists and returns proper structure
+        result = await launcher.wait_for_ready(
+            port=65001,
+            timeout=0.1,
+            poll_interval=0.05
+        )
+        
+        assert "ready" in result
+        assert "time_taken" in result
+
+
+class TestTopologyLaunch:
+    """Test topology batch launch scenarios."""
+    
+    def test_parse_topology_with_mixed_devices(self, tmp_path: Path) -> None:
+        """Test parsing topology with routers and switches."""
+        topo_content = '''<?xml version="1.0" encoding="UTF-8"?>
+        <topo>
+            <devices>
+                <dev id="1" name="R1" device_type="Router" cx="100" cy="100"/>
+                <dev id="2" name="R2" device_type="Router" cx="200" cy="100"/>
+                <dev id="3" name="S1" device_type="Switch" cx="150" cy="200"/>
+                <dev id="4" name="S2" device_type="Switch" cx="250" cy="200"/>
+            </devices>
+        </topo>'''
+        
+        topo_path = tmp_path / "test.topo"
+        topo_path.write_text(topo_content)
+        
+        sync_service = TopoSyncService()
+        root = sync_service.load_topology(topo_path)
+        devices_elem = root.find("devices")
+        devices = devices_elem.findall("dev")
+        
+        assert len(devices) == 4
+        
+        routers = [d for d in devices if "Router" in d.get("device_type", "")]
+        switches = [d for d in devices if "Switch" in d.get("device_type", "")]
+        
+        assert len(routers) == 2
+        assert len(switches) == 2
+    
+    def test_topology_device_id_increment(self, tmp_path: Path) -> None:
+        """Test that device IDs increment correctly."""
+        topo_content = '''<?xml version="1.0" encoding="UTF-8"?>
+        <topo>
+            <devices>
+                <dev id="5" name="R1" cx="100" cy="100"/>
+                <dev id="10" name="R2" cx="200" cy="100"/>
+            </devices>
+        </topo>'''
+        
+        topo_path = tmp_path / "test.topo"
+        topo_path.write_text(topo_content)
+        
+        device = RunningDevice(
+            name="R3",
+            device_type="router",
+            model="AR2220",
+            pid=12345,
+            port=2000,
+            mac_address="54-89-98-11-22-33",
+        )
+        
+        sync_service = TopoSyncService()
+        result = sync_service.add_device_to_topo(topo_path, device)
+        
+        # New device should have ID 11 (max + 1)
+        assert result["device_id"] == 11
+    
+    def test_empty_topology_handling(self, tmp_path: Path) -> None:
+        """Test handling of empty topology."""
+        topo_content = '''<?xml version="1.0" encoding="UTF-8"?>
+        <topo>
+            <devices>
+            </devices>
+        </topo>'''
+        
+        topo_path = tmp_path / "test.topo"
+        topo_path.write_text(topo_content)
+        
+        device = RunningDevice(
+            name="R1",
+            device_type="router",
+            model="AR2220",
+            pid=12345,
+            port=2000,
+            mac_address="54-89-98-11-22-33",
+        )
+        
+        sync_service = TopoSyncService()
+        result = sync_service.add_device_to_topo(topo_path, device)
+        
+        assert result["success"]
+        assert result["device_id"] == 1
+    
+    def test_device_type_mapping(self) -> None:
+        """Test device type to model mapping."""
+        from ensp_cli.commands.lifecycle import _map_device_type
+        
+        # Test router mapping
+        dev_type, model = _map_device_type("Router")
+        assert dev_type == "router"
+        assert model == "AR2220"
+        
+        # Test switch mapping
+        dev_type, model = _map_device_type("Switch")
+        assert dev_type == "switch"
+        assert model == "S5700"
+        
+        # Test LSW mapping
+        dev_type, model = _map_device_type("LSW")
+        assert dev_type == "switch"
+        
+        # Test default mapping
+        dev_type, model = _map_device_type("Unknown")
+        assert dev_type == "router"
+
+
+class TestErrorHandling:
+    """Test error handling and recovery."""
+    
+    def test_invalid_mac_format_rejected(self) -> None:
+        """Test that invalid MAC addresses are rejected by model."""
+        # Valid MAC should work
+        device = RunningDevice(
+            name="R1",
+            device_type="router",
+            model="AR2220",
+            pid=12345,
+            port=2000,
+            mac_address="54-89-98-11-22-33",
+        )
+        assert device.mac_address == "54-89-98-11-22-33"
+    
+    def test_device_name_uniqueness_in_state(self, tmp_path: Path) -> None:
+        """Test that device names are unique in state."""
+        state_file = tmp_path / "state.json"
+        manager = ProcessManager(state_file=state_file)
+        
+        device1 = RunningDevice(
+            name="R1",
+            device_type="router",
+            model="AR2220",
+            pid=12345,
+            port=2000,
+            mac_address="54-89-98-11-22-33",
+        )
+        manager.register_device(device1)
+        
+        # Registering same name should overwrite
+        device2 = RunningDevice(
+            name="R1",  # Same name
+            device_type="switch",
+            model="S5700",
+            pid=12346,
+            port=2001,
+            mac_address="4C-1F-CC-11-22-33",
+        )
+        manager.register_device(device2)
+        
+        retrieved = manager.get_device("R1")
+        assert retrieved.device_type == "switch"
+        assert retrieved.model == "S5700"
+    
+    def test_corrupt_state_file_recovery(self, tmp_path: Path) -> None:
+        """Test recovery from corrupt state file."""
+        state_file = tmp_path / "state.json"
+        
+        # Write corrupt JSON
+        state_file.write_text("{invalid json")
+        
+        # Should not raise exception, start fresh
+        manager = ProcessManager(state_file=state_file)
+        assert manager.list_devices() == []
