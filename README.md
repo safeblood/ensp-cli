@@ -25,7 +25,7 @@ pip install ensp-cli
 Or install from source:
 
 ```bash
-git clone https://gitee.com/safegeek/ensp-cli.git
+git clone https://github.com/safeblood/ensp-cli.git
 cd ensp-cli
 pip install -e .
 ```
